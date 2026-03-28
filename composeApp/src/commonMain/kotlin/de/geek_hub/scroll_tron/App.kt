@@ -217,12 +217,72 @@ private fun DrawScope.drawBorder(trailColor: Color) {
     )
 }
 
-private fun DrawScope.drawDeadOverlay(textMeasurer: androidx.compose.ui.text.TextMeasurer) {
+private fun DrawScope.drawScoreHud(
+    textMeasurer: androidx.compose.ui.text.TextMeasurer,
+    score: Int,
+    highScore: Int,
+    trailColor: Color,
+) {
+    val scoreText = "SCORE  " + score.toString().padStart(6, '0')
+    val hiText    = "BEST   " + highScore.toString().padStart(6, '0')
+
+    val scoreMeasured = textMeasurer.measure(
+        scoreText,
+        TextStyle(
+            fontSize   = 14.sp,
+            fontWeight = FontWeight.Bold,
+            fontFamily = FontFamily.Monospace,
+            color      = trailColor,
+        ),
+    )
+    val hiMeasured = textMeasurer.measure(
+        hiText,
+        TextStyle(
+            fontSize   = 14.sp,
+            fontFamily = FontFamily.Monospace,
+            color      = Color(0xFF666666),
+        ),
+    )
+
+    val padding   = 16f
+    val scoreW    = scoreMeasured.multiParagraph.width
+    val scoreH    = scoreMeasured.multiParagraph.height
+    val hiW       = hiMeasured.multiParagraph.width
+    val lineH     = scoreH + 4f
+
+    // Semi-transparent pill background
+    val boxW = maxOf(scoreW, hiW) + padding * 2
+    val boxH = lineH * 2 + padding
+    drawRect(
+        color   = Color(0xCC000000),
+        topLeft = Offset(size.width - boxW - padding, padding),
+        size    = Size(boxW, boxH),
+    )
+
+    drawText(
+        scoreMeasured,
+        topLeft = Offset(size.width - scoreW - padding * 2, padding + 6f),
+    )
+    drawText(
+        hiMeasured,
+        topLeft = Offset(size.width - hiW - padding * 2, padding + 6f + lineH),
+    )
+}
+
+private fun DrawScope.drawDeadOverlay(
+    textMeasurer: androidx.compose.ui.text.TextMeasurer,
+    score: Int,
+    highScore: Int,
+) {
     // Dim overlay
     drawRect(Color(0xCC000000))
 
-    val title = "SYSTEM FAILURE"
-    val sub   = "Press  R  to restart"
+    val isNewBest = score > 0 && score >= highScore
+
+    val title      = "SYSTEM FAILURE"
+    val scoreLine  = if (isNewBest) "★  NEW BEST: $score" else "SCORE: $score"
+    val bestLine   = if (isNewBest) ""                    else "BEST:  $highScore"
+    val sub        = "Press  R  to restart"
 
     val titleMeasured = textMeasurer.measure(
         title,
@@ -233,26 +293,43 @@ private fun DrawScope.drawDeadOverlay(textMeasurer: androidx.compose.ui.text.Tex
             color      = NEON_PINK,
         ),
     )
+    val scoreMeasured = textMeasurer.measure(
+        scoreLine,
+        TextStyle(
+            fontSize   = 22.sp,
+            fontWeight = FontWeight.Bold,
+            fontFamily = FontFamily.Monospace,
+            color      = if (isNewBest) NEON_LIME else Color(0xFFEEEEEE),
+        ),
+    )
+    val bestMeasured = if (bestLine.isNotEmpty()) textMeasurer.measure(
+        bestLine,
+        TextStyle(
+            fontSize   = 16.sp,
+            fontFamily = FontFamily.Monospace,
+            color      = Color(0xFF666666),
+        ),
+    ) else null
     val subMeasured = textMeasurer.measure(
         sub,
         TextStyle(
-            fontSize   = 20.sp,
+            fontSize   = 16.sp,
             fontFamily = FontFamily.Monospace,
-            color      = Color(0xFFAAAAAA),
+            color      = Color(0xFF888888),
         ),
     )
 
     val cx = size.width  / 2f
     val cy = size.height / 2f
 
-    drawText(
-        titleMeasured,
-        topLeft = Offset(cx - titleMeasured.size.width / 2f, cy - 60f),
-    )
-    drawText(
-        subMeasured,
-        topLeft = Offset(cx - subMeasured.size.width / 2f, cy + 20f),
-    )
+    drawText(titleMeasured,
+        topLeft = Offset(cx - titleMeasured.size.width / 2f, cy - 80f))
+    drawText(scoreMeasured,
+        topLeft = Offset(cx - scoreMeasured.size.width / 2f, cy - 10f))
+    if (bestMeasured != null) drawText(bestMeasured,
+        topLeft = Offset(cx - bestMeasured.size.width / 2f, cy + 22f))
+    drawText(subMeasured,
+        topLeft = Offset(cx - subMeasured.size.width / 2f, cy + 56f))
 }
 
 // ---------------------------------------------------------------------------
@@ -270,6 +347,7 @@ fun App(onExit: () -> Unit = {}) {
 
     var gameState  by remember { mutableStateOf(initialState(canvasWidth, canvasHeight)) }
     var trailColor by remember { mutableStateOf(nextTrailColor()) }
+    var highScore  by remember { mutableStateOf(0) }
 
     val focusRequester = remember { FocusRequester() }
     val textMeasurer   = rememberTextMeasurer()
@@ -291,7 +369,13 @@ fun App(onExit: () -> Unit = {}) {
                 if (elapsed >= 14L) {                             // ~60 fps
                     lastFrame = nanos
                     if (canvasWidth > 0f && canvasHeight > 0f) {
-                        gameState = stepGame(gameState, canvasWidth, canvasHeight)
+                        val prev = gameState
+                        gameState = stepGame(prev, canvasWidth, canvasHeight)
+                        // Update highscore at the moment of death
+                        if (!prev.isDead && gameState.isDead) {
+                            val score = gameState.trail.size
+                            if (score > highScore) highScore = score
+                        }
                     }
                 }
             }
@@ -346,9 +430,12 @@ fun App(onExit: () -> Unit = {}) {
                 drawHead(gameState.position, angleDeg, trailColor)
             }
 
+            // Live score HUD
+            drawScoreHud(textMeasurer, gameState.trail.size, highScore, trailColor)
+
             // Death overlay
             if (gameState.isDead) {
-                drawDeadOverlay(textMeasurer)
+                drawDeadOverlay(textMeasurer, gameState.trail.size, highScore)
             }
         }
     }
