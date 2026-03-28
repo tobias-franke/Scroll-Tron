@@ -5,3 +5,7 @@ class JsPlatform: Platform {
 }
 
 actual fun getPlatform(): Platform = JsPlatform()
+
+actual fun openUrl(url: String) {
+    kotlinx.browser.window.open(url, "_blank")
+}

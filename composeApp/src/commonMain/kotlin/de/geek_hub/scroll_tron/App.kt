@@ -10,6 +10,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -20,7 +21,9 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.input.key.*
 import androidx.compose.ui.input.pointer.PointerEventType
+import androidx.compose.ui.input.pointer.PointerIcon
 import androidx.compose.ui.input.pointer.onPointerEvent
+import androidx.compose.ui.input.pointer.pointerHoverIcon
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.drawText
 import androidx.compose.ui.text.font.FontFamily
@@ -45,6 +48,62 @@ private val TRAIL_COLORS = listOf(NEON_CYAN, NEON_PINK, NEON_LIME, NEON_ORANGE)
 private var colorIndex = 0
 
 private fun nextTrailColor() = TRAIL_COLORS[colorIndex++ % TRAIL_COLORS.size]
+
+// ---------------------------------------------------------------------------
+// 🎵 Easter egg — every 5th death reveals a lyric (shh, don't tell anyone)
+// ---------------------------------------------------------------------------
+
+private val RICK_LINES = listOf(
+    "Never gonna give you up",
+    "Never gonna let you down",
+    "Never gonna run around and desert you",
+    "Never gonna make you cry",
+    "Never gonna say goodbye",
+    "Never gonna tell a lie and hurt you",
+)
+
+private fun DrawScope.drawRickRollOverlay(
+    textMeasurer: androidx.compose.ui.text.TextMeasurer,
+    deathCount: Int,
+    onLyricBounds: (Rect) -> Unit,
+) {
+    drawRect(Color(0xCC000000))
+
+    val lyric   = RICK_LINES[(deathCount / 5 - 1) % RICK_LINES.size]
+    val restart = "Press  R  to restart"
+
+    val lyricMeasured = textMeasurer.measure(
+        lyric,
+        TextStyle(
+            fontSize   = 32.sp,
+            fontWeight = FontWeight.Bold,
+            fontFamily = FontFamily.Monospace,
+            color      = NEON_CYAN,
+        ),
+    )
+    val restartMeasured = textMeasurer.measure(
+        restart,
+        TextStyle(
+            fontSize   = 16.sp,
+            fontFamily = FontFamily.Monospace,
+            color      = Color(0xFF666666),
+        ),
+    )
+
+    val cx     = size.width  / 2f
+    val cy     = size.height / 2f
+    val lyricW = lyricMeasured.multiParagraph.width
+    val lyricH = lyricMeasured.multiParagraph.height
+    val lyricX = cx - lyricW / 2f
+    val lyricY = cy - 30f
+
+    // Report bounds so the click handler can detect hits
+    onLyricBounds(Rect(lyricX, lyricY, lyricX + lyricW, lyricY + lyricH))
+
+    drawText(lyricMeasured, topLeft = Offset(lyricX, lyricY))
+    drawText(restartMeasured,
+        topLeft = Offset(cx - restartMeasured.multiParagraph.width / 2f, cy + 30f))
+}
 
 // ---------------------------------------------------------------------------
 // Collision helpers (parametric segment-segment intersection)
@@ -345,9 +404,12 @@ fun App(onExit: () -> Unit = {}) {
     var canvasWidth  by remember { mutableStateOf(0f) }
     var canvasHeight by remember { mutableStateOf(0f) }
 
-    var gameState  by remember { mutableStateOf(initialState(canvasWidth, canvasHeight)) }
-    var trailColor by remember { mutableStateOf(nextTrailColor()) }
-    var highScore  by remember { mutableStateOf(0) }
+    var gameState     by remember { mutableStateOf(initialState(canvasWidth, canvasHeight)) }
+    var trailColor    by remember { mutableStateOf(nextTrailColor()) }
+    var highScore     by remember { mutableStateOf(0) }
+    var deathCount    by remember { mutableStateOf(0) }
+    var rickLyricRect  by remember { mutableStateOf<Rect?>(null) }
+    var isHoveringLyric by remember { mutableStateOf(false) }
 
     val focusRequester = remember { FocusRequester() }
     val textMeasurer   = rememberTextMeasurer()
@@ -371,8 +433,9 @@ fun App(onExit: () -> Unit = {}) {
                     if (canvasWidth > 0f && canvasHeight > 0f) {
                         val prev = gameState
                         gameState = stepGame(prev, canvasWidth, canvasHeight)
-                        // Update highscore at the moment of death
+                        // Update highscore and death counter at the moment of death
                         if (!prev.isDead && gameState.isDead) {
+                            deathCount++
                             val score = gameState.trail.size
                             if (score > highScore) highScore = score
                         }
@@ -409,7 +472,25 @@ fun App(onExit: () -> Unit = {}) {
                         angularVelocity = gameState.angularVelocity + sign * STEERING_SENSITIVITY
                     )
                 }
-            },
+            }
+            // Rick Roll click — only active when the easter egg overlay is showing
+            .onPointerEvent(PointerEventType.Move) { event ->
+                val pos  = event.changes.firstOrNull()?.position
+                val rect = rickLyricRect
+                isHoveringLyric = gameState.isDead && deathCount % 5 == 0
+                    && rect != null && pos != null && rect.contains(pos)
+            }
+            .onPointerEvent(PointerEventType.Press) { event ->
+                val pos = event.changes.firstOrNull()?.position ?: return@onPointerEvent
+                val rect = rickLyricRect
+                if (gameState.isDead && deathCount % 5 == 0 && rect != null && rect.contains(pos)) {
+                    openUrl("https://youtu.be/dQw4w9WgXcQ")
+                }
+            }
+            .pointerHoverIcon(
+                if (isHoveringLyric) PointerIcon.Hand else PointerIcon.Default,
+                overrideDescendants = true,
+            ),
     ) {
         Canvas(modifier = Modifier.fillMaxSize()) {
             // Capture canvas size
@@ -435,7 +516,13 @@ fun App(onExit: () -> Unit = {}) {
 
             // Death overlay
             if (gameState.isDead) {
-                drawDeadOverlay(textMeasurer, gameState.trail.size, highScore)
+                if (deathCount % 5 == 0) {
+                    // 🎵 every 5th death: surprise!
+                    drawRickRollOverlay(textMeasurer, deathCount) { rickLyricRect = it }
+                } else {
+                    rickLyricRect = null
+                    drawDeadOverlay(textMeasurer, gameState.trail.size, highScore)
+                }
             }
         }
     }
