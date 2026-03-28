@@ -342,7 +342,7 @@ fun App(onExit: () -> Unit = {}) {
 
             // Head
             if (!gameState.isDead) {
-                val angleDeg = Math.toDegrees(gameState.angle.toDouble()).toFloat()
+                val angleDeg = (gameState.angle * (180.0 / kotlin.math.PI)).toFloat()
                 drawHead(gameState.position, angleDeg, trailColor)
             }
 
