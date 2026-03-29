@@ -1,10 +1,16 @@
 package de.geek_hub.scroll_tron
 
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Text
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
@@ -30,6 +36,7 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.isActive
 import kotlin.math.abs
@@ -65,12 +72,16 @@ private val RICK_LINES = listOf(
 private fun DrawScope.drawRickRollOverlay(
     textMeasurer: androidx.compose.ui.text.TextMeasurer,
     deathCount: Int,
+    score: Int,
+    highScore: Int,
     onLyricBounds: (Rect) -> Unit,
 ) {
     drawRect(Color(0xCC000000))
 
-    val lyric   = RICK_LINES[(deathCount / 5 - 1) % RICK_LINES.size]
-    val restart = "Press  R  to restart"
+    val lyric     = RICK_LINES[(deathCount / 5 - 1) % RICK_LINES.size]
+    val isNewBest = score > 0 && score >= highScore
+    val scoreLine = if (isNewBest) "[NEW] BEST: $score" else "SCORE: $score"
+    val bestLine  = if (isNewBest) ""                   else "BEST:  $highScore"
 
     val lyricMeasured = textMeasurer.measure(
         lyric,
@@ -81,28 +92,38 @@ private fun DrawScope.drawRickRollOverlay(
             color      = NEON_CYAN,
         ),
     )
-    val restartMeasured = textMeasurer.measure(
-        restart,
+    val scoreMeasured = textMeasurer.measure(
+        scoreLine,
         TextStyle(
             fontSize   = 16.sp,
+            fontWeight = FontWeight.Bold,
+            fontFamily = FontFamily.Monospace,
+            color      = if (isNewBest) NEON_LIME else Color(0xFFCCCCCC),
+        ),
+    )
+    val bestMeasured = if (bestLine.isNotEmpty()) textMeasurer.measure(
+        bestLine,
+        TextStyle(
+            fontSize   = 14.sp,
             fontFamily = FontFamily.Monospace,
             color      = Color(0xFF666666),
         ),
-    )
+    ) else null
 
     val cx     = size.width  / 2f
     val cy     = size.height / 2f
     val lyricW = lyricMeasured.multiParagraph.width
     val lyricH = lyricMeasured.multiParagraph.height
     val lyricX = cx - lyricW / 2f
-    val lyricY = cy - 30f
+    val lyricY = cy - 50f
 
-    // Report bounds so the click handler can detect hits
     onLyricBounds(Rect(lyricX, lyricY, lyricX + lyricW, lyricY + lyricH))
 
     drawText(lyricMeasured, topLeft = Offset(lyricX, lyricY))
-    drawText(restartMeasured,
-        topLeft = Offset(cx - restartMeasured.multiParagraph.width / 2f, cy + 30f))
+    drawText(scoreMeasured,
+        topLeft = Offset(cx - scoreMeasured.multiParagraph.width / 2f, cy + 14f))
+    if (bestMeasured != null) drawText(bestMeasured,
+        topLeft = Offset(cx - bestMeasured.multiParagraph.width / 2f, cy + 38f))
 }
 
 // ---------------------------------------------------------------------------
@@ -339,9 +360,8 @@ private fun DrawScope.drawDeadOverlay(
     val isNewBest = score > 0 && score >= highScore
 
     val title      = "SYSTEM FAILURE"
-    val scoreLine  = if (isNewBest) "★  NEW BEST: $score" else "SCORE: $score"
+    val scoreLine  = if (isNewBest) "[NEW] BEST: $score" else "SCORE: $score"
     val bestLine   = if (isNewBest) ""                    else "BEST:  $highScore"
-    val sub        = "Press  R  to restart"
 
     val titleMeasured = textMeasurer.measure(
         title,
@@ -369,26 +389,16 @@ private fun DrawScope.drawDeadOverlay(
             color      = Color(0xFF666666),
         ),
     ) else null
-    val subMeasured = textMeasurer.measure(
-        sub,
-        TextStyle(
-            fontSize   = 16.sp,
-            fontFamily = FontFamily.Monospace,
-            color      = Color(0xFF888888),
-        ),
-    )
 
     val cx = size.width  / 2f
     val cy = size.height / 2f
 
     drawText(titleMeasured,
-        topLeft = Offset(cx - titleMeasured.size.width / 2f, cy - 80f))
+        topLeft = Offset(cx - titleMeasured.size.width / 2f, cy - 60f))
     drawText(scoreMeasured,
-        topLeft = Offset(cx - scoreMeasured.size.width / 2f, cy - 10f))
+        topLeft = Offset(cx - scoreMeasured.size.width / 2f, cy + 10f))
     if (bestMeasured != null) drawText(bestMeasured,
-        topLeft = Offset(cx - bestMeasured.size.width / 2f, cy + 22f))
-    drawText(subMeasured,
-        topLeft = Offset(cx - subMeasured.size.width / 2f, cy + 56f))
+        topLeft = Offset(cx - bestMeasured.size.width / 2f, cy + 42f))
 }
 
 // ---------------------------------------------------------------------------
@@ -410,6 +420,11 @@ fun App(onExit: () -> Unit = {}) {
     var deathCount    by remember { mutableStateOf(0) }
     var rickLyricRect  by remember { mutableStateOf<Rect?>(null) }
     var isHoveringLyric by remember { mutableStateOf(false) }
+
+    val doRestart: () -> Unit = {
+        trailColor = nextTrailColor()
+        gameState  = initialState(canvasWidth, canvasHeight)
+    }
 
     val focusRequester = remember { FocusRequester() }
     val textMeasurer   = rememberTextMeasurer()
@@ -456,8 +471,7 @@ fun App(onExit: () -> Unit = {}) {
                 when (event.key) {
                     Key.Escape -> { onExit(); true }
                     Key.R -> if (gameState.isDead) {
-                        trailColor = nextTrailColor()
-                        gameState  = initialState(canvasWidth, canvasHeight)
+                        doRestart()
                         true
                     } else false
                     else -> false
@@ -518,17 +532,47 @@ fun App(onExit: () -> Unit = {}) {
             if (gameState.isDead) {
                 if (deathCount % 5 == 0) {
                     // 🎵 every 5th death: surprise!
-                    drawRickRollOverlay(textMeasurer, deathCount) { rickLyricRect = it }
+                    drawRickRollOverlay(textMeasurer, deathCount, gameState.trail.size, highScore) { rickLyricRect = it }
                 } else {
                     rickLyricRect = null
                     drawDeadOverlay(textMeasurer, gameState.trail.size, highScore)
                 }
             }
         }
+
+        // Restart button — shown on both death screens, above the LaunchedEffect focus grab
+        if (gameState.isDead) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(bottom = 56.dp),
+                contentAlignment = Alignment.BottomCenter,
+            ) {
+                Box(
+                    modifier = Modifier
+                        .border(
+                            width = 1.dp,
+                            color = trailColor,
+                            shape = RoundedCornerShape(4.dp),
+                        )
+                        .clickable { doRestart() }
+                        .padding(horizontal = 36.dp, vertical = 12.dp),
+                ) {
+                    Text(
+                        text       = "[R]ESTART",
+                        fontFamily = FontFamily.Monospace,
+                        fontWeight = FontWeight.Bold,
+                        fontSize   = 16.sp,
+                        color      = trailColor,
+                    )
+                }
+            }
+        }
     }
 
-    // Grab keyboard focus so onKeyEvent works immediately
-    LaunchedEffect(Unit) {
-        focusRequester.requestFocus()
-    }
+    // Grab keyboard focus initially and re-claim it whenever isDead changes.
+    // The restart button (.clickable) steals focus when it appears; this ensures
+    // Escape and R always route back to the main Box.
+    LaunchedEffect(Unit) { focusRequester.requestFocus() }
+    LaunchedEffect(gameState.isDead) { focusRequester.requestFocus() }
 }
