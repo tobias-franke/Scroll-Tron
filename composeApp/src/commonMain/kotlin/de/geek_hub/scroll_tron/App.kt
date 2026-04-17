@@ -39,6 +39,10 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.isActive
+import org.jetbrains.compose.resources.Font
+import scrolltron.composeapp.generated.resources.Res
+import scrolltron.composeapp.generated.resources.orbitron_bold
+import scrolltron.composeapp.generated.resources.orbitron_regular
 import kotlin.math.abs
 import kotlin.math.cos
 import kotlin.math.sin
@@ -74,6 +78,7 @@ private fun DrawScope.drawRickRollOverlay(
     deathCount: Int,
     score: Int,
     highScore: Int,
+    gameFont: FontFamily,
     onLyricBounds: (Rect) -> Unit,
 ) {
     drawRect(Color(0xCC000000))
@@ -88,7 +93,7 @@ private fun DrawScope.drawRickRollOverlay(
         TextStyle(
             fontSize   = 32.sp,
             fontWeight = FontWeight.Bold,
-            fontFamily = FontFamily.Monospace,
+            fontFamily = gameFont,
             color      = NEON_CYAN,
         ),
     )
@@ -97,7 +102,7 @@ private fun DrawScope.drawRickRollOverlay(
         TextStyle(
             fontSize   = 16.sp,
             fontWeight = FontWeight.Bold,
-            fontFamily = FontFamily.Monospace,
+            fontFamily = gameFont,
             color      = if (isNewBest) NEON_LIME else Color(0xFFCCCCCC),
         ),
     )
@@ -105,7 +110,7 @@ private fun DrawScope.drawRickRollOverlay(
         bestLine,
         TextStyle(
             fontSize   = 14.sp,
-            fontFamily = FontFamily.Monospace,
+            fontFamily = gameFont,
             color      = Color(0xFF666666),
         ),
     ) else null
@@ -314,6 +319,7 @@ private fun DrawScope.drawScoreHud(
     score: Int,
     highScore: Int,
     trailColor: Color,
+    gameFont: FontFamily,
 ) {
     val scoreText = "SCORE  " + score.toString().padStart(6, '0')
     val hiText    = "BEST   " + highScore.toString().padStart(6, '0')
@@ -365,6 +371,7 @@ private fun DrawScope.drawDeadOverlay(
     textMeasurer: androidx.compose.ui.text.TextMeasurer,
     score: Int,
     highScore: Int,
+    gameFont: FontFamily,
 ) {
     // Dim overlay
     drawRect(Color(0xCC000000))
@@ -380,7 +387,7 @@ private fun DrawScope.drawDeadOverlay(
         TextStyle(
             fontSize   = 48.sp,
             fontWeight = FontWeight.Bold,
-            fontFamily = FontFamily.Monospace,
+            fontFamily = gameFont,
             color      = NEON_PINK,
         ),
     )
@@ -389,7 +396,7 @@ private fun DrawScope.drawDeadOverlay(
         TextStyle(
             fontSize   = 22.sp,
             fontWeight = FontWeight.Bold,
-            fontFamily = FontFamily.Monospace,
+            fontFamily = gameFont,
             color      = if (isNewBest) NEON_LIME else Color(0xFFEEEEEE),
         ),
     )
@@ -397,7 +404,7 @@ private fun DrawScope.drawDeadOverlay(
         bestLine,
         TextStyle(
             fontSize   = 16.sp,
-            fontFamily = FontFamily.Monospace,
+            fontFamily = gameFont,
             color      = Color(0xFF666666),
         ),
     ) else null
@@ -447,6 +454,7 @@ fun App(onExit: () -> Unit = {}) {
     var deathCount    by remember { mutableStateOf(0) }
     var rickLyricRect  by remember { mutableStateOf<Rect?>(null) }
     var isHoveringLyric by remember { mutableStateOf(false) }
+    var showHint        by remember { mutableStateOf(true) }
 
     val doRestart: () -> Unit = {
         trailColor = nextTrailColor()
@@ -455,6 +463,10 @@ fun App(onExit: () -> Unit = {}) {
 
     val focusRequester = remember { FocusRequester() }
     val textMeasurer   = rememberTextMeasurer()
+    val gameFont = FontFamily(
+        Font(Res.font.orbitron_regular, FontWeight.Normal),
+        Font(Res.font.orbitron_bold, FontWeight.Bold),
+    )
 
     // Re-initialise when canvas size becomes known for the first time
     LaunchedEffect(canvasWidth, canvasHeight) {
@@ -508,6 +520,7 @@ fun App(onExit: () -> Unit = {}) {
             .onPointerEvent(PointerEventType.Scroll) { event ->
                 val delta = event.changes.firstOrNull()?.scrollDelta?.y ?: 0f
                 if (!gameState.isDead && delta != 0f) {
+                    showHint = false
                     val sign = if (delta > 0f) 1f else -1f
                     gameState = gameState.copy(
                         angularVelocity = gameState.angularVelocity + sign * STEERING_SENSITIVITY
@@ -553,16 +566,68 @@ fun App(onExit: () -> Unit = {}) {
             }
 
             // Live score HUD
-            drawScoreHud(textMeasurer, gameState.trail.size, highScore, trailColor)
+            drawScoreHud(textMeasurer, gameState.trail.size, highScore, trailColor, gameFont)
+
+            // First-start hint
+            if (showHint && !gameState.isDead) {
+                // Pulse alpha between 0.4 and 1.0 based on trail length as a simple frame proxy
+                val pulse = 0.4f + 0.6f * ((1f + sin(gameState.trail.size.toFloat() * 0.08f)) / 2f)
+                val hintMeasured = textMeasurer.measure(
+                    "SCROLL TO STEER",
+                    TextStyle(
+                        fontSize   = 18.sp,
+                        fontWeight = FontWeight.Bold,
+                        fontFamily = gameFont,
+                        color      = trailColor.copy(alpha = pulse),
+                    ),
+                )
+                val textW = hintMeasured.size.width.toFloat()
+                val textH = hintMeasured.size.height.toFloat()
+                val arrowGap = 16f          // space between arrows and text
+                val arrowH   = 14f          // height of each triangle
+                val arrowW   = 12f          // half-width of each triangle
+                val arrowSpacing = 6f       // gap between the two triangles
+                val totalW   = arrowW * 2 + arrowGap + textW
+                val startX   = size.width / 2f - totalW / 2f
+                val textY    = size.height / 2f + 60f
+                val arrowCx  = startX + arrowW  // centre-x of arrows
+                val arrowCy  = textY + textH / 2f  // vertically centred on text
+
+                val arrowColor = trailColor.copy(alpha = pulse)
+
+                // ▲ up triangle
+                val upPath = Path().apply {
+                    moveTo(arrowCx, arrowCy - arrowSpacing / 2f - arrowH)
+                    lineTo(arrowCx - arrowW, arrowCy - arrowSpacing / 2f)
+                    lineTo(arrowCx + arrowW, arrowCy - arrowSpacing / 2f)
+                    close()
+                }
+                drawPath(upPath, color = arrowColor)
+
+                // ▼ down triangle
+                val downPath = Path().apply {
+                    moveTo(arrowCx, arrowCy + arrowSpacing / 2f + arrowH)
+                    lineTo(arrowCx - arrowW, arrowCy + arrowSpacing / 2f)
+                    lineTo(arrowCx + arrowW, arrowCy + arrowSpacing / 2f)
+                    close()
+                }
+                drawPath(downPath, color = arrowColor)
+
+                // Text
+                drawText(
+                    hintMeasured,
+                    topLeft = Offset(startX + arrowW * 2 + arrowGap, textY),
+                )
+            }
 
             // Death overlay
             if (gameState.isDead) {
                 if (deathCount % 5 == 0) {
                     // 🎵 every 5th death: surprise!
-                    drawRickRollOverlay(textMeasurer, deathCount, gameState.trail.size, highScore) { rickLyricRect = it }
+                    drawRickRollOverlay(textMeasurer, deathCount, gameState.trail.size, highScore, gameFont) { rickLyricRect = it }
                 } else {
                     rickLyricRect = null
-                    drawDeadOverlay(textMeasurer, gameState.trail.size, highScore)
+                    drawDeadOverlay(textMeasurer, gameState.trail.size, highScore, gameFont)
                 }
             }
         }
@@ -587,7 +652,7 @@ fun App(onExit: () -> Unit = {}) {
                 ) {
                     Text(
                         text       = "[R]ESTART",
-                        fontFamily = FontFamily.Monospace,
+                        fontFamily = gameFont,
                         fontWeight = FontWeight.Bold,
                         fontSize   = 16.sp,
                         color      = trailColor,
