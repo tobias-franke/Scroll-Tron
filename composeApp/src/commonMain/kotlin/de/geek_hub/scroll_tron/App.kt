@@ -469,8 +469,10 @@ fun App(onExit: () -> Unit = {}) {
     )
 
     // Re-initialise when canvas size becomes known for the first time
+    var hasInitialisedWithSize by remember { mutableStateOf(false) }
     LaunchedEffect(canvasWidth, canvasHeight) {
-        if (canvasWidth > 0f && canvasHeight > 0f && gameState.trail.isEmpty() && !gameState.isDead) {
+        if (canvasWidth > 0f && canvasHeight > 0f && !hasInitialisedWithSize) {
+            hasInitialisedWithSize = true
             gameState = initialState(canvasWidth, canvasHeight)
         }
     }
