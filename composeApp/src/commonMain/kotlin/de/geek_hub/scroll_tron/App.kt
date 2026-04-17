@@ -85,7 +85,7 @@ private fun DrawScope.drawRickRollOverlay(
 
     val lyric     = RICK_LINES[(deathCount / 5 - 1) % RICK_LINES.size]
     val isNewBest = score > 0 && score >= highScore
-    val scoreLine = if (isNewBest) "[NEW] BEST: $score" else "SCORE: $score"
+    val scoreLine = if (isNewBest) "NEW BEST: $score" else "SCORE: $score"
     val bestLine  = if (isNewBest) ""                   else "BEST:  $highScore"
 
     val lyricMeasured = textMeasurer.measure(
@@ -100,16 +100,16 @@ private fun DrawScope.drawRickRollOverlay(
     val scoreMeasured = textMeasurer.measure(
         scoreLine,
         TextStyle(
-            fontSize   = 16.sp,
+            fontSize   = 22.sp,
             fontWeight = FontWeight.Bold,
             fontFamily = gameFont,
-            color      = if (isNewBest) NEON_LIME else Color(0xFFCCCCCC),
+            color      = if (isNewBest) NEON_LIME else Color(0xFFEEEEEE),
         ),
     )
     val bestMeasured = if (bestLine.isNotEmpty()) textMeasurer.measure(
         bestLine,
         TextStyle(
-            fontSize   = 14.sp,
+            fontSize   = 16.sp,
             fontFamily = gameFont,
             color      = Color(0xFF666666),
         ),
@@ -379,7 +379,7 @@ private fun DrawScope.drawDeadOverlay(
     val isNewBest = score > 0 && score >= highScore
 
     val title      = "SYSTEM FAILURE"
-    val scoreLine  = if (isNewBest) "[NEW] BEST: $score" else "SCORE: $score"
+    val scoreLine  = if (isNewBest) "NEW BEST: $score" else "SCORE: $score"
     val bestLine   = if (isNewBest) ""                    else "BEST:  $highScore"
 
     val titleMeasured = textMeasurer.measure(
