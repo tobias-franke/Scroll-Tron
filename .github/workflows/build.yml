@@ -18,7 +18,7 @@ jobs:
           distribution: 'temurin'
 
       - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v4
+        uses: gradle/actions/setup-gradle@v6
 
       - name: Build JVM (native desktop)
         run: ./gradlew :composeApp:compileKotlinJvm
@@ -35,7 +35,7 @@ jobs:
           distribution: 'temurin'
 
       - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v4
+        uses: gradle/actions/setup-gradle@v6
 
       - name: Build Web (WASM + JS)
         run: ./gradlew :composeApp:composeCompatibilityBrowserDistribution
