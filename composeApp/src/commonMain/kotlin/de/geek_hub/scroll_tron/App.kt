@@ -112,18 +112,30 @@ private fun DrawScope.drawRickRollOverlay(
 
     val cx     = size.width  / 2f
     val cy     = size.height / 2f
-    val lyricW = lyricMeasured.multiParagraph.width
-    val lyricH = lyricMeasured.multiParagraph.height
+    val gap    = 12f  // vertical margin between lines
+
+    // Compute total block height so we can centre it vertically
+    val lyricH = lyricMeasured.size.height.toFloat()
+    val scoreH = scoreMeasured.size.height.toFloat()
+    val bestH  = bestMeasured?.size?.height?.toFloat() ?: 0f
+    val totalH = lyricH + gap + scoreH + if (bestMeasured != null) gap + bestH else 0f
+    var cursorY = cy - totalH / 2f
+
+    // Lyric
+    val lyricW = lyricMeasured.size.width.toFloat()
     val lyricX = cx - lyricW / 2f
-    val lyricY = cy - 50f
+    onLyricBounds(Rect(lyricX, cursorY, lyricX + lyricW, cursorY + lyricH))
+    drawText(lyricMeasured, topLeft = Offset(lyricX, cursorY))
+    cursorY += lyricH + gap
 
-    onLyricBounds(Rect(lyricX, lyricY, lyricX + lyricW, lyricY + lyricH))
-
-    drawText(lyricMeasured, topLeft = Offset(lyricX, lyricY))
+    // Score
     drawText(scoreMeasured,
-        topLeft = Offset(cx - scoreMeasured.multiParagraph.width / 2f, cy + 14f))
+        topLeft = Offset(cx - scoreMeasured.size.width / 2f, cursorY))
+    cursorY += scoreH + gap
+
+    // Best (optional)
     if (bestMeasured != null) drawText(bestMeasured,
-        topLeft = Offset(cx - bestMeasured.multiParagraph.width / 2f, cy + 38f))
+        topLeft = Offset(cx - bestMeasured.size.width / 2f, cursorY))
 }
 
 // ---------------------------------------------------------------------------
@@ -390,15 +402,30 @@ private fun DrawScope.drawDeadOverlay(
         ),
     ) else null
 
-    val cx = size.width  / 2f
-    val cy = size.height / 2f
+    val cx  = size.width  / 2f
+    val cy  = size.height / 2f
+    val gap = 12f  // vertical margin between lines
 
+    // Compute total block height so we can centre it vertically
+    val titleH = titleMeasured.size.height.toFloat()
+    val scoreH = scoreMeasured.size.height.toFloat()
+    val bestH  = bestMeasured?.size?.height?.toFloat() ?: 0f
+    val totalH = titleH + gap + scoreH + if (bestMeasured != null) gap + bestH else 0f
+    var cursorY = cy - totalH / 2f
+
+    // Title
     drawText(titleMeasured,
-        topLeft = Offset(cx - titleMeasured.size.width / 2f, cy - 60f))
+        topLeft = Offset(cx - titleMeasured.size.width / 2f, cursorY))
+    cursorY += titleH + gap
+
+    // Score
     drawText(scoreMeasured,
-        topLeft = Offset(cx - scoreMeasured.size.width / 2f, cy + 10f))
+        topLeft = Offset(cx - scoreMeasured.size.width / 2f, cursorY))
+    cursorY += scoreH + gap
+
+    // Best (optional)
     if (bestMeasured != null) drawText(bestMeasured,
-        topLeft = Offset(cx - bestMeasured.size.width / 2f, cy + 42f))
+        topLeft = Offset(cx - bestMeasured.size.width / 2f, cursorY))
 }
 
 // ---------------------------------------------------------------------------
