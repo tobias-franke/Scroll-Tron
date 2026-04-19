@@ -1,55 +1,37 @@
-This is a Kotlin Multiplatform project targeting Web, Desktop (JVM).
+# Scroll-Tron
 
-* [/composeApp](./composeApp/src) is for code that will be shared across your Compose Multiplatform applications.
-  It contains several subfolders:
-  - [commonMain](./composeApp/src/commonMain/kotlin) is for code that’s common for all targets.
-  - Other folders are for Kotlin code that will be compiled for only the platform indicated in the folder name.
-    For example, if you want to use Apple’s CoreCrypto for the iOS part of your Kotlin app,
-    the [iosMain](./composeApp/src/iosMain/kotlin) folder would be the right place for such calls.
-    Similarly, if you want to edit the Desktop (JVM) specific part, the [jvmMain](./composeApp/src/jvmMain/kotlin)
-    folder is the appropriate location.
+Scroll-Tron is a fast-paced, neon-infused arcade game built using [Compose Multiplatform](https://github.com/JetBrains/compose-multiplatform). Steer your light trail using your mouse's scroll wheel and try to survive as long as possible without hitting the edge or your own trail!
 
-### Build and Run Desktop (JVM) Application
+## Features
+- **Scroll to Steer**: Unique control scheme utilizing the mouse scroll wheel.
+- **Neon Aesthetic**: Retro-futuristic glowing visuals.
+- **Cross-Platform**: Playable on the web (WASM/JS) and desktop (JVM).
+- **Easter Eggs**: Discover hidden surprises as you play!
 
-To build and run the development version of the desktop app, use the run configuration from the run widget
-in your IDE’s toolbar or run it directly from the terminal:
-- on macOS/Linux
-  ```shell
-  ./gradlew :composeApp:run
-  ```
-- on Windows
-  ```shell
-  .\gradlew.bat :composeApp:run
-  ```
+## Controls
+- **Scroll Up/Down**: Steer left/right
+- **R / Click Restart**: Restart after a crash
+- **Escape**: Exit game
 
-### Build and Run Web Application
+## How to Build and Run
 
-To build and run the development version of the web app, use the run configuration from the run widget
-in your IDE's toolbar or run it directly from the terminal:
-- for the Wasm target (faster, modern browsers):
-  - on macOS/Linux
-    ```shell
-    ./gradlew :composeApp:wasmJsBrowserDevelopmentRun
-    ```
-  - on Windows
-    ```shell
-    .\gradlew.bat :composeApp:wasmJsBrowserDevelopmentRun
-    ```
-- for the JS target (slower, supports older browsers):
-  - on macOS/Linux
-    ```shell
-    ./gradlew :composeApp:jsBrowserDevelopmentRun
-    ```
-  - on Windows
-    ```shell
-    .\gradlew.bat :composeApp:jsBrowserDevelopmentRun
-    ```
+### Desktop (JVM)
+Run the development version of the desktop application using Gradle:
+```shell
+./gradlew :composeApp:run
+```
 
----
+### Web Application (Wasm or JS)
+Run the web application locally. You can target either WebAssembly (faster, for modern browsers) or JavaScript (for older browsers).
 
-Learn more about [Kotlin Multiplatform](https://www.jetbrains.com/help/kotlin-multiplatform-dev/get-started.html),
-[Compose Multiplatform](https://github.com/JetBrains/compose-multiplatform/#compose-multiplatform),
-[Kotlin/Wasm](https://kotl.in/wasm/)…
+**WASM Target:**
+```shell
+./gradlew :composeApp:wasmJsBrowserDevelopmentRun
+```
 
-We would appreciate your feedback on Compose/Web and Kotlin/Wasm in the public Slack channel [#compose-web](https://slack-chats.kotlinlang.org/c/compose-web).
-If you face any issues, please report them on [YouTrack](https://youtrack.jetbrains.com/newIssue?project=CMP).
+**JavaScript Target:**
+```shell
+./gradlew :composeApp:jsBrowserDevelopmentRun
+```
+
+After starting the server, open your web browser to the provided local URL to play the game!
