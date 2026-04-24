@@ -343,6 +343,7 @@ private fun DrawScope.drawScoreHud(
     )
 
     val padding   = 16f
+    val topInset  = 48f
     val scoreW    = scoreMeasured.multiParagraph.width
     val scoreH    = scoreMeasured.multiParagraph.height
     val hiW       = hiMeasured.multiParagraph.width
@@ -353,17 +354,17 @@ private fun DrawScope.drawScoreHud(
     val boxH = lineH * 2 + padding
     drawRect(
         color   = Color(0xCC000000),
-        topLeft = Offset(size.width - boxW - padding, padding),
+        topLeft = Offset(size.width - boxW - padding, padding + topInset),
         size    = Size(boxW, boxH),
     )
 
     drawText(
         scoreMeasured,
-        topLeft = Offset(size.width - scoreW - padding * 2, padding + 6f),
+        topLeft = Offset(size.width - scoreW - padding * 2, padding + topInset + 6f),
     )
     drawText(
         hiMeasured,
-        topLeft = Offset(size.width - hiW - padding * 2, padding + 6f + lineH),
+        topLeft = Offset(size.width - hiW - padding * 2, padding + topInset + 6f + lineH),
     )
 }
 
