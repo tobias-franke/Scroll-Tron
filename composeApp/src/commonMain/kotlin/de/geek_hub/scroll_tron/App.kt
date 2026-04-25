@@ -672,7 +672,7 @@ fun App(onExit: () -> Unit = {}) {
                         .padding(horizontal = 36.dp, vertical = 12.dp),
                 ) {
                     Text(
-                        text       = "[R]ESTART",
+                        text       = "RESTART",
                         fontFamily = gameFont,
                         fontWeight = FontWeight.Bold,
                         fontSize   = 16.sp,
