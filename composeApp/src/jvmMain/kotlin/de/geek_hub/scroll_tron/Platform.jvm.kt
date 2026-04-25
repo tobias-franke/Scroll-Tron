@@ -5,3 +5,5 @@ actual fun openUrl(url: String) {
         java.awt.Desktop.getDesktop().browse(java.net.URI(url))
     } catch (_: Exception) {}
 }
+
+actual fun getPlatformScaleFactor(): Float = 1.0f
