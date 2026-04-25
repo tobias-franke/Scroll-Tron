@@ -5,8 +5,10 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
@@ -22,9 +24,11 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.rotate
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.key.*
 import androidx.compose.ui.input.pointer.PointerEventType
 import androidx.compose.ui.input.pointer.PointerIcon
@@ -502,7 +506,9 @@ fun App(onExit: () -> Unit = {}) {
         }
     }
 
-    Box(
+    val scaleFactor = getPlatformScaleFactor()
+
+    BoxWithConstraints(
         modifier = Modifier
             .fillMaxSize()
             .focusRequester(focusRequester)
@@ -549,7 +555,19 @@ fun App(onExit: () -> Unit = {}) {
                 overrideDescendants = true,
             ),
     ) {
-        Canvas(modifier = Modifier.fillMaxSize()) {
+        val logicalWidth = maxWidth / scaleFactor
+        val logicalHeight = maxHeight / scaleFactor
+
+        Box(
+            modifier = Modifier
+                .requiredSize(logicalWidth, logicalHeight)
+                .graphicsLayer {
+                    scaleX = scaleFactor
+                    scaleY = scaleFactor
+                    transformOrigin = TransformOrigin(0f, 0f)
+                }
+        ) {
+            Canvas(modifier = Modifier.fillMaxSize()) {
             // Capture canvas size
             if (canvasWidth  != size.width)  canvasWidth  = size.width
             if (canvasHeight != size.height) canvasHeight = size.height
@@ -663,7 +681,9 @@ fun App(onExit: () -> Unit = {}) {
                 }
             }
         }
-    }
+        
+    } // Closes inner scaled Box
+    } // Closes BoxWithConstraints
 
     // Grab keyboard focus initially and re-claim it whenever isDead changes.
     // The restart button (.clickable) steals focus when it appears; this ensures
