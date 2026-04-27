@@ -83,6 +83,7 @@ private fun DrawScope.drawRickRollOverlay(
     score: Int,
     highScore: Int,
     gameFont: FontFamily,
+    scaleFactor: Float,
     onLyricBounds: (Rect) -> Unit,
 ) {
     drawRect(Color(0xCC000000))
@@ -95,7 +96,7 @@ private fun DrawScope.drawRickRollOverlay(
     val lyricMeasured = textMeasurer.measure(
         lyric,
         TextStyle(
-            fontSize   = 32.sp,
+            fontSize   = (32 / scaleFactor).sp,
             fontWeight = FontWeight.Bold,
             fontFamily = gameFont,
             color      = NEON_CYAN,
@@ -104,7 +105,7 @@ private fun DrawScope.drawRickRollOverlay(
     val scoreMeasured = textMeasurer.measure(
         scoreLine,
         TextStyle(
-            fontSize   = 22.sp,
+            fontSize   = (22 / scaleFactor).sp,
             fontWeight = FontWeight.Bold,
             fontFamily = gameFont,
             color      = if (isNewBest) NEON_LIME else Color(0xFFEEEEEE),
@@ -113,7 +114,7 @@ private fun DrawScope.drawRickRollOverlay(
     val bestMeasured = if (bestLine.isNotEmpty()) textMeasurer.measure(
         bestLine,
         TextStyle(
-            fontSize   = 16.sp,
+            fontSize   = (16 / scaleFactor).sp,
             fontFamily = gameFont,
             color      = Color(0xFF666666),
         ),
@@ -121,7 +122,7 @@ private fun DrawScope.drawRickRollOverlay(
 
     val cx     = size.width  / 2f
     val cy     = size.height / 2f
-    val gap    = 12f  // vertical margin between lines
+    val gap    = 12f / scaleFactor  // vertical margin between lines
 
     // Compute total block height so we can centre it vertically
     val lyricH = lyricMeasured.size.height.toFloat()
@@ -324,6 +325,7 @@ private fun DrawScope.drawScoreHud(
     highScore: Int,
     trailColor: Color,
     gameFont: FontFamily,
+    scaleFactor: Float,
 ) {
     val scoreText = "SCORE  " + score.toString().padStart(6, '0')
     val hiText    = "BEST   " + highScore.toString().padStart(6, '0')
@@ -331,7 +333,7 @@ private fun DrawScope.drawScoreHud(
     val scoreMeasured = textMeasurer.measure(
         scoreText,
         TextStyle(
-            fontSize   = 14.sp,
+            fontSize   = (14 / scaleFactor).sp,
             fontWeight = FontWeight.Bold,
             fontFamily = FontFamily.Monospace,
             color      = trailColor,
@@ -340,14 +342,14 @@ private fun DrawScope.drawScoreHud(
     val hiMeasured = textMeasurer.measure(
         hiText,
         TextStyle(
-            fontSize   = 14.sp,
+            fontSize   = (14 / scaleFactor).sp,
             fontFamily = FontFamily.Monospace,
             color      = Color(0xFF666666),
         ),
     )
 
-    val padding   = 16f
-    val topInset  = 48f
+    val padding   = 16f / scaleFactor
+    val topInset  = 48f / scaleFactor
     val scoreW    = scoreMeasured.multiParagraph.width
     val scoreH    = scoreMeasured.multiParagraph.height
     val hiW       = hiMeasured.multiParagraph.width
@@ -377,6 +379,7 @@ private fun DrawScope.drawDeadOverlay(
     score: Int,
     highScore: Int,
     gameFont: FontFamily,
+    scaleFactor: Float,
 ) {
     // Dim overlay
     drawRect(Color(0xCC000000))
@@ -390,7 +393,7 @@ private fun DrawScope.drawDeadOverlay(
     val titleMeasured = textMeasurer.measure(
         title,
         TextStyle(
-            fontSize   = 48.sp,
+            fontSize   = (48 / scaleFactor).sp,
             fontWeight = FontWeight.Bold,
             fontFamily = gameFont,
             color      = NEON_PINK,
@@ -399,7 +402,7 @@ private fun DrawScope.drawDeadOverlay(
     val scoreMeasured = textMeasurer.measure(
         scoreLine,
         TextStyle(
-            fontSize   = 22.sp,
+            fontSize   = (22 / scaleFactor).sp,
             fontWeight = FontWeight.Bold,
             fontFamily = gameFont,
             color      = if (isNewBest) NEON_LIME else Color(0xFFEEEEEE),
@@ -408,7 +411,7 @@ private fun DrawScope.drawDeadOverlay(
     val bestMeasured = if (bestLine.isNotEmpty()) textMeasurer.measure(
         bestLine,
         TextStyle(
-            fontSize   = 16.sp,
+            fontSize   = (16 / scaleFactor).sp,
             fontFamily = gameFont,
             color      = Color(0xFF666666),
         ),
@@ -416,7 +419,7 @@ private fun DrawScope.drawDeadOverlay(
 
     val cx  = size.width  / 2f
     val cy  = size.height / 2f
-    val gap = 12f  // vertical margin between lines
+    val gap = 12f / scaleFactor  // vertical margin between lines
 
     // Compute total block height so we can centre it vertically
     val titleH = titleMeasured.size.height.toFloat()
@@ -587,7 +590,7 @@ fun App(onExit: () -> Unit = {}) {
             }
 
             // Live score HUD
-            drawScoreHud(textMeasurer, gameState.trail.size, highScore, trailColor, gameFont)
+            drawScoreHud(textMeasurer, gameState.trail.size, highScore, trailColor, gameFont, scaleFactor)
 
             // First-start hint
             if (showHint && !gameState.isDead) {
@@ -596,7 +599,7 @@ fun App(onExit: () -> Unit = {}) {
                 val hintMeasured = textMeasurer.measure(
                     "SCROLL TO STEER",
                     TextStyle(
-                        fontSize   = 18.sp,
+                        fontSize   = (18 / scaleFactor).sp,
                         fontWeight = FontWeight.Bold,
                         fontFamily = gameFont,
                         color      = trailColor.copy(alpha = pulse),
@@ -604,10 +607,10 @@ fun App(onExit: () -> Unit = {}) {
                 )
                 val textW = hintMeasured.size.width.toFloat()
                 val textH = hintMeasured.size.height.toFloat()
-                val arrowGap = 16f          // space between arrows and text
-                val arrowH   = 14f          // height of each triangle
-                val arrowW   = 12f          // half-width of each triangle
-                val arrowSpacing = 6f       // gap between the two triangles
+                val arrowGap = 16f / scaleFactor          // space between arrows and text
+                val arrowH   = 14f / scaleFactor          // height of each triangle
+                val arrowW   = 12f / scaleFactor          // half-width of each triangle
+                val arrowSpacing = 6f / scaleFactor       // gap between the two triangles
                 val totalW   = arrowW * 2 + arrowGap + textW
                 val startX   = size.width / 2f - totalW / 2f
                 val textY    = size.height / 2f + 60f
@@ -645,10 +648,10 @@ fun App(onExit: () -> Unit = {}) {
             if (gameState.isDead) {
                 if (deathCount % 5 == 0) {
                     // 🎵 every 5th death: surprise!
-                    drawRickRollOverlay(textMeasurer, deathCount, gameState.trail.size, highScore, gameFont) { rickLyricRect = it }
+                    drawRickRollOverlay(textMeasurer, deathCount, gameState.trail.size, highScore, gameFont, scaleFactor) { rickLyricRect = it }
                 } else {
                     rickLyricRect = null
-                    drawDeadOverlay(textMeasurer, gameState.trail.size, highScore, gameFont)
+                    drawDeadOverlay(textMeasurer, gameState.trail.size, highScore, gameFont, scaleFactor)
                 }
             }
         }
@@ -658,24 +661,24 @@ fun App(onExit: () -> Unit = {}) {
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(bottom = 56.dp),
+                    .padding(bottom = (56 / scaleFactor).dp),
                 contentAlignment = Alignment.BottomCenter,
             ) {
                 Box(
                     modifier = Modifier
                         .border(
-                            width = 1.dp,
+                            width = (1 / scaleFactor).dp,
                             color = trailColor,
                             shape = RoundedCornerShape(4.dp),
                         )
                         .clickable { doRestart() }
-                        .padding(horizontal = 36.dp, vertical = 12.dp),
+                        .padding(horizontal = (36 / scaleFactor).dp, vertical = (12 / scaleFactor).dp),
                 ) {
                     Text(
                         text       = "RESTART",
                         fontFamily = gameFont,
                         fontWeight = FontWeight.Bold,
-                        fontSize   = 16.sp,
+                        fontSize   = (16 / scaleFactor).sp,
                         color      = trailColor,
                     )
                 }
