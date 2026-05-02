@@ -347,6 +347,7 @@ fun MultiplayerGame(
     var rematchRequested by remember { mutableStateOf(false) }
     var opponentRematch  by remember { mutableStateOf(false) }
     var isLeaving by remember { mutableStateOf(false) }
+    var connectionLost by remember { mutableStateOf(false) }
 
     // Sync counter — send full state every N frames (host only)
     var syncCounter by remember { mutableStateOf(0) }
@@ -371,8 +372,7 @@ fun MultiplayerGame(
     LaunchedEffect(connector) {
         connector.onStateChanged { state ->
             if ((state == LobbyConnectionState.Idle || state == LobbyConnectionState.Error) && !isLeaving) {
-                isLeaving = true
-                onBack()
+                connectionLost = true
             }
         }
 
@@ -427,7 +427,7 @@ fun MultiplayerGame(
             withFrameNanos { nanos ->
                 if (lastFrame == 0L) { lastFrame = nanos; return@withFrameNanos }
                 val elapsed = (nanos - lastFrame) / 1_000_000L
-                if (elapsed >= 14L) {
+                if (elapsed >= 14L && !connectionLost) {
                     lastFrame = nanos
                     if (isHost) {
                         // Host steps physics
@@ -564,13 +564,16 @@ fun MultiplayerGame(
                     drawText(myMeasured, topLeft = Offset(pad, pad + topInset))
                     drawText(oppMeasured, topLeft = Offset(pad, pad + topInset + myMeasured.size.height + 10f))
 
-                    // Game over overlay
-                    if (mpState.winner != null) {
+                    // Game over or Connection Lost overlay
+                    if (mpState.winner != null || connectionLost) {
                         drawRect(Color(0xCC000000), size = Size(GAME_WIDTH, GAME_HEIGHT))
 
-                        val iWon = mpState.winner == myPlayerId
-                        val title = if (iWon) "YOU WIN" else "YOU LOSE"
-                        val titleColor = if (iWon) NEON_LIME else Color(0xFFFF3333)
+                        val title = if (connectionLost) "CONNECTION LOST"
+                                    else if (mpState.winner == myPlayerId) "YOU WIN"
+                                    else "YOU LOSE"
+                        val titleColor = if (connectionLost) Color(0xFFFFCC00)
+                                         else if (mpState.winner == myPlayerId) NEON_LIME
+                                         else Color(0xFFFF3333)
 
                         val titleMeasured = textMeasurer.measure(
                             title,
@@ -615,7 +618,7 @@ fun MultiplayerGame(
         }
 
             // Rematch / back buttons overlay
-            if (mpState.winner != null) {
+            if (mpState.winner != null || connectionLost) {
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
@@ -625,8 +628,9 @@ fun MultiplayerGame(
                     Row(
                         horizontalArrangement = Arrangement.spacedBy(16.dp),
                     ) {
-                        // Rematch button
-                        val rematchColor = if (rematchRequested && !opponentRematch)
+                        // Rematch button (only if not disconnected)
+                        if (!connectionLost) {
+                            val rematchColor = if (rematchRequested && !opponentRematch)
                             Color(0xFF666666) else NEON_LIME
                         val rematchText = when {
                             rematchRequested && !opponentRematch -> "WAITING..."
@@ -650,6 +654,7 @@ fun MultiplayerGame(
                                 fontSize = 16.sp,
                                 color = rematchColor,
                             )
+                        }
                         }
 
                         // Back to menu
