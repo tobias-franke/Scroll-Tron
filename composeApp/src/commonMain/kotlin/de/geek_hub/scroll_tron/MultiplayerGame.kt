@@ -185,6 +185,41 @@ private fun stepPlayer(
 }
 
 // ---------------------------------------------------------------------------
+// Client-side prediction step (no collision detection — host is authoritative)
+// ---------------------------------------------------------------------------
+
+private fun stepPredicted(state: GameState): GameState {
+    if (state.isDead) return state
+
+    val newAngle = state.angle + state.angularVelocity
+    val newAngVel = state.angularVelocity * ANGULAR_DECAY
+
+    val dx = SPEED * cos(newAngle)
+    val dy = SPEED * sin(newAngle)
+    val oldPos = state.position
+    val newPos = Point(oldPos.x + dx, oldPos.y + dy)
+
+    state.trail.add(LineSegment(oldPos, newPos))
+
+    return state.copy(
+        position = newPos,
+        angle = newAngle,
+        angularVelocity = newAngVel,
+    )
+}
+
+private fun stepMultiplayerPredicted(
+    state: MultiplayerGameState,
+): MultiplayerGameState {
+    if (state.winner != null) return state
+    return MultiplayerGameState(
+        player1 = stepPredicted(state.player1),
+        player2 = stepPredicted(state.player2),
+        winner = null,
+    )
+}
+
+// ---------------------------------------------------------------------------
 // Full multiplayer step (host-authoritative)
 // ---------------------------------------------------------------------------
 
@@ -306,16 +341,18 @@ private fun MultiplayerGameState.applySyncData(data: GameSyncData): MultiplayerG
     }
     
     val newP1Pos = Point(data.p1X, data.p1Y)
-    val p1DistSq = (player1.position.x - newP1Pos.x)*(player1.position.x - newP1Pos.x) + (player1.position.y - newP1Pos.y)*(player1.position.y - newP1Pos.y)
-    if (!data.p1Dead && p1DistSq <= 10000f) {
-        player1.trail.add(LineSegment(player1.position, newP1Pos))
+    // Replace last predicted segment with correction to authoritative position
+    if (player1.trail.isNotEmpty() && !data.p1Dead) {
+        val lastSeg = player1.trail.last()
+        player1.trail[player1.trail.lastIndex] = LineSegment(lastSeg.start, newP1Pos)
     }
     val p1Trail = player1.trail
 
     val newP2Pos = Point(data.p2X, data.p2Y)
-    val p2DistSq = (player2.position.x - newP2Pos.x)*(player2.position.x - newP2Pos.x) + (player2.position.y - newP2Pos.y)*(player2.position.y - newP2Pos.y)
-    if (!data.p2Dead && p2DistSq <= 10000f) {
-        player2.trail.add(LineSegment(player2.position, newP2Pos))
+    // Replace last predicted segment with correction to authoritative position
+    if (player2.trail.isNotEmpty() && !data.p2Dead) {
+        val lastSeg = player2.trail.last()
+        player2.trail[player2.trail.lastIndex] = LineSegment(lastSeg.start, newP2Pos)
     }
     val p2Trail = player2.trail
 
@@ -426,7 +463,7 @@ fun MultiplayerGame(
         }
     }
 
-    // Game loop (host runs physics, guest just renders)
+    // Game loop (host runs physics, guest predicts locally)
     LaunchedEffect(gameStarted) {
         if (!gameStarted) return@LaunchedEffect
         var lastFrame = 0L
@@ -437,7 +474,7 @@ fun MultiplayerGame(
                 if (elapsed >= 14L && !connectionLost) {
                     lastFrame = nanos
                     if (isHost) {
-                        // Host steps physics
+                        // Host steps physics (authoritative)
                         mpState = stepMultiplayer(mpState)
 
                         // Send state sync to guest
@@ -451,6 +488,9 @@ fun MultiplayerGame(
                         if (mpState.winner != null) {
                             connector.sendGameOver(if (mpState.winner == PlayerId.Player1) 1 else 2)
                         }
+                    } else {
+                        // Guest: predict locally for smooth rendering
+                        mpState = stepMultiplayerPredicted(mpState)
                     }
                 }
             }
