@@ -444,13 +444,12 @@ private fun DrawScope.drawDeadOverlay(
 }
 
 // ---------------------------------------------------------------------------
-// Main composable
+// Singleplayer game composable (extracted from original App)
 // ---------------------------------------------------------------------------
 
 @OptIn(ExperimentalComposeUiApi::class)
 @Composable
-@Preview
-fun App(onExit: () -> Unit = {}) {
+fun SingleplayerGame(onBack: () -> Unit = {}) {
     // Canvas size is set on first layout pass. Use mutableStateOf so recompose
     // triggers when it's first known.
     var canvasWidth  by remember { mutableStateOf(0f) }
@@ -520,7 +519,7 @@ fun App(onExit: () -> Unit = {}) {
             .onKeyEvent { event ->
                 if (event.type != KeyEventType.KeyDown) return@onKeyEvent false
                 when (event.key) {
-                    Key.Escape -> { onExit(); true }
+                    Key.Escape -> { onBack(); true }
                     Key.R -> if (gameState.isDead) {
                         doRestart()
                         true
@@ -693,4 +692,57 @@ fun App(onExit: () -> Unit = {}) {
     // Escape and R always route back to the main Box.
     LaunchedEffect(Unit) { focusRequester.requestFocus() }
     LaunchedEffect(gameState.isDead) { focusRequester.requestFocus() }
+}
+
+// ---------------------------------------------------------------------------
+// Top-level App with screen navigation
+// ---------------------------------------------------------------------------
+
+@Composable
+@Preview
+fun App(onExit: () -> Unit = {}) {
+    var currentScreen by remember { mutableStateOf<Screen>(Screen.MainMenu) }
+    var mpConnector by remember { mutableStateOf<MultiplayerConnector?>(null) }
+    var mpIsHost by remember { mutableStateOf(false) }
+
+    when (val screen = currentScreen) {
+        is Screen.MainMenu -> {
+            MainMenu(
+                onSingleplayer = { currentScreen = Screen.Singleplayer },
+                onMultiplayer  = { currentScreen = Screen.MultiplayerLobby },
+            )
+        }
+        is Screen.Singleplayer -> {
+            SingleplayerGame(
+                onBack = { currentScreen = Screen.MainMenu },
+            )
+        }
+        is Screen.MultiplayerLobby -> {
+            MultiplayerLobby(
+                onBack = { currentScreen = Screen.MainMenu },
+                onGameReady = { connector, isHost ->
+                    mpConnector = connector
+                    mpIsHost = isHost
+                    currentScreen = Screen.MultiplayerGame(
+                        isHost = isHost,
+                        roomCode = connector.roomCode,
+                    )
+                },
+            )
+        }
+        is Screen.MultiplayerGame -> {
+            val connector = mpConnector
+            if (connector != null) {
+                MultiplayerGame(
+                    connector = connector,
+                    isHost = screen.isHost,
+                    onBack = {
+                        connector.disconnect()
+                        mpConnector = null
+                        currentScreen = Screen.MainMenu
+                    },
+                )
+            }
+        }
+    }
 }

@@ -7,3 +7,5 @@ actual fun openUrl(url: String) {
 actual fun getPlatformScaleFactor(): Float {
     return if (kotlinx.browser.window.self !== kotlinx.browser.window.top) 2.0f else 1.0f
 }
+
+actual fun isMultiplayerSupported(): Boolean = true

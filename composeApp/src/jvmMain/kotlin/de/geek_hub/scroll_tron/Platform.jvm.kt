@@ -7,3 +7,5 @@ actual fun openUrl(url: String) {
 }
 
 actual fun getPlatformScaleFactor(): Float = 1.0f
+
+actual fun isMultiplayerSupported(): Boolean = false
