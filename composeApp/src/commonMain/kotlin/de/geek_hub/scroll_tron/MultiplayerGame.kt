@@ -19,6 +19,8 @@ import androidx.compose.ui.graphics.*
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.rotate
+import androidx.compose.ui.graphics.drawscope.translate
+import androidx.compose.ui.graphics.drawscope.scale
 import androidx.compose.ui.input.key.*
 import androidx.compose.ui.input.pointer.PointerEventType
 import androidx.compose.ui.input.pointer.PointerIcon
@@ -72,10 +74,13 @@ private fun segmentsIntersect(
 // Multiplayer initial state
 // ---------------------------------------------------------------------------
 
-private fun mpInitialState(canvasWidth: Float, canvasHeight: Float): MultiplayerGameState {
+const val GAME_WIDTH = 2000f
+const val GAME_HEIGHT = 2000f
+
+private fun mpInitialState(): MultiplayerGameState {
     val gridStep = 60f
-    val w = if (canvasWidth  > 0f) canvasWidth  else 800f
-    val h = if (canvasHeight > 0f) canvasHeight else 600f
+    val w = GAME_WIDTH
+    val h = GAME_HEIGHT
 
     // Player 1 starts on the left quarter, heading right
     val p1x = kotlin.math.round(w * 0.25f / gridStep) * gridStep
@@ -111,8 +116,6 @@ private fun mpInitialState(canvasWidth: Float, canvasHeight: Float): Multiplayer
 private fun stepPlayer(
     state: GameState,
     opponentTrail: List<LineSegment>,
-    canvasWidth: Float,
-    canvasHeight: Float,
 ): GameState {
     if (state.isDead) return state
 
@@ -128,8 +131,8 @@ private fun stepPlayer(
     val newTrail = state.trail + newSegment
 
     // Wall collision
-    val wallHit = newPos.x < 0 || newPos.x > canvasWidth ||
-                  newPos.y < 0 || newPos.y > canvasHeight
+    val wallHit = newPos.x < 0 || newPos.x > GAME_WIDTH ||
+                  newPos.y < 0 || newPos.y > GAME_HEIGHT
 
     // Self-collision
     val selfHit = if (newTrail.size > SKIP_SEGMENTS) {
@@ -157,13 +160,11 @@ private fun stepPlayer(
 
 private fun stepMultiplayer(
     state: MultiplayerGameState,
-    canvasWidth: Float,
-    canvasHeight: Float,
 ): MultiplayerGameState {
     if (state.winner != null) return state
 
-    val newP1 = stepPlayer(state.player1, state.player2.trail, canvasWidth, canvasHeight)
-    val newP2 = stepPlayer(state.player2, state.player1.trail, canvasWidth, canvasHeight)
+    val newP1 = stepPlayer(state.player1, state.player2.trail)
+    val newP2 = stepPlayer(state.player2, state.player1.trail)
 
     // Determine winner
     val winner = when {
@@ -188,13 +189,13 @@ private fun DrawScope.drawGrid() {
     val step = 60f
     val lineColor = Color(0xFF0D2A0D)
     var x = 0f
-    while (x <= size.width) {
-        drawLine(lineColor, Offset(x, 0f), Offset(x, size.height), strokeWidth = 1f)
+    while (x <= GAME_WIDTH) {
+        drawLine(lineColor, Offset(x, 0f), Offset(x, GAME_HEIGHT), strokeWidth = 1f)
         x += step
     }
     var y = 0f
-    while (y <= size.height) {
-        drawLine(lineColor, Offset(0f, y), Offset(size.width, y), strokeWidth = 1f)
+    while (y <= GAME_HEIGHT) {
+        drawLine(lineColor, Offset(0f, y), Offset(GAME_WIDTH, y), strokeWidth = 1f)
         y += step
     }
 }
@@ -205,7 +206,7 @@ private fun DrawScope.drawBorder() {
     drawRect(
         color = Color(0xFF00FFFF).copy(alpha = 0.4f),
         topLeft = Offset(inset, inset),
-        size = Size(size.width - strokeWidth, size.height - strokeWidth),
+        size = Size(GAME_WIDTH - strokeWidth, GAME_HEIGHT - strokeWidth),
         style = Stroke(width = strokeWidth),
     )
 }
@@ -321,10 +322,7 @@ fun MultiplayerGame(
     isHost: Boolean,
     onBack: () -> Unit,
 ) {
-    var canvasWidth  by remember { mutableStateOf(0f) }
-    var canvasHeight by remember { mutableStateOf(0f) }
-
-    var mpState by remember { mutableStateOf(mpInitialState(canvasWidth, canvasHeight)) }
+    var mpState by remember { mutableStateOf(mpInitialState()) }
     var gameStarted by remember { mutableStateOf(false) }
     var rematchRequested by remember { mutableStateOf(false) }
     var opponentRematch  by remember { mutableStateOf(false) }
@@ -340,30 +338,20 @@ fun MultiplayerGame(
         Font(Res.font.orbitron_bold, FontWeight.Bold),
     )
 
-    val scaleFactor = getPlatformScaleFactor()
-
-    // My player index
-    val myPlayerId = if (isHost) PlayerId.Player1 else PlayerId.Player2
-
-    // Re-initialise when canvas size becomes known
-    var hasInitialisedWithSize by remember { mutableStateOf(false) }
-    LaunchedEffect(canvasWidth, canvasHeight) {
-        if (canvasWidth > 0f && canvasHeight > 0f && !hasInitialisedWithSize) {
-            hasInitialisedWithSize = true
-            mpState = mpInitialState(canvasWidth, canvasHeight)
-            if (isHost) {
-                connector.sendGameStart(canvasWidth, canvasHeight)
-                gameStarted = true
-            }
+    // Host starts immediately, guest waits for GAME_START message
+    LaunchedEffect(Unit) {
+        if (isHost) {
+            connector.sendGameStart(GAME_WIDTH, GAME_HEIGHT)
+            gameStarted = true
         }
     }
 
     // Set up message handlers
     LaunchedEffect(connector) {
-        connector.onGameStartReceived { w, h ->
+        connector.onGameStartReceived { _, _ ->
             if (!isHost) {
-                // Guest received canvas dimensions from host
-                mpState = mpInitialState(w, h)
+                // Guest received start signal from host
+                mpState = mpInitialState()
                 gameStarted = true
             }
         }
@@ -393,11 +381,11 @@ fun MultiplayerGame(
             opponentRematch = true
             if (rematchRequested) {
                 // Both want rematch — restart
-                mpState = mpInitialState(canvasWidth, canvasHeight)
+                mpState = mpInitialState()
                 rematchRequested = false
                 opponentRematch = false
                 if (isHost) {
-                    connector.sendGameStart(canvasWidth, canvasHeight)
+                    connector.sendGameStart(GAME_WIDTH, GAME_HEIGHT)
                 }
             }
         }
@@ -413,9 +401,9 @@ fun MultiplayerGame(
                 val elapsed = (nanos - lastFrame) / 1_000_000L
                 if (elapsed >= 14L) {
                     lastFrame = nanos
-                    if (isHost && canvasWidth > 0f && canvasHeight > 0f) {
+                    if (isHost) {
                         // Host steps physics
-                        mpState = stepMultiplayer(mpState, canvasWidth, canvasHeight)
+                        mpState = stepMultiplayer(mpState)
 
                         // Send state sync to guest
                         syncCounter++
@@ -438,11 +426,11 @@ fun MultiplayerGame(
         rematchRequested = true
         connector.sendRematch()
         if (opponentRematch) {
-            mpState = mpInitialState(canvasWidth, canvasHeight)
+            mpState = mpInitialState()
             rematchRequested = false
             opponentRematch = false
             if (isHost) {
-                connector.sendGameStart(canvasWidth, canvasHeight)
+                connector.sendGameStart(GAME_WIDTH, GAME_HEIGHT)
             }
         }
     }
@@ -478,26 +466,24 @@ fun MultiplayerGame(
                 }
             },
     ) {
-        val logicalWidth = maxWidth / scaleFactor
-        val logicalHeight = maxHeight / scaleFactor
+        // My player index
+        val myPlayerId = if (isHost) PlayerId.Player1 else PlayerId.Player2
 
         Box(
-            modifier = Modifier
-                .requiredSize(logicalWidth, logicalHeight)
-                .graphicsLayer {
-                    scaleX = scaleFactor
-                    scaleY = scaleFactor
-                    transformOrigin = TransformOrigin(0f, 0f)
-                }
+            modifier = Modifier.fillMaxSize(),
+            contentAlignment = Alignment.Center
         ) {
             Canvas(modifier = Modifier.fillMaxSize()) {
-                if (canvasWidth  != size.width)  canvasWidth  = size.width
-                if (canvasHeight != size.height) canvasHeight = size.height
+                val fitScale = minOf(size.width / GAME_WIDTH, size.height / GAME_HEIGHT)
+                val dx = (size.width - GAME_WIDTH * fitScale) / 2f
+                val dy = (size.height - GAME_HEIGHT * fitScale) / 2f
 
-                // Background
-                drawRect(Color(0xFF020C02))
-                drawGrid()
-                drawBorder()
+                translate(left = dx, top = dy) {
+                    scale(scale = fitScale, pivot = Offset.Zero) {
+                        // Background
+                        drawRect(Color(0xFF020C02), size = Size(GAME_WIDTH, GAME_HEIGHT))
+                        drawGrid()
+                        drawBorder()
 
                 if (gameStarted) {
                     // Player 1 (host) trail & head
@@ -520,13 +506,13 @@ fun MultiplayerGame(
                     val oppLabel = if (isHost) "OPPONENT (P2)" else "OPPONENT (P1)"
                     val oppColor = if (isHost) PLAYER2_COLOR else PLAYER1_COLOR
 
-                    val pad = 16f / scaleFactor
-                    val topInset = 48f / scaleFactor
+                    val pad = 40f
+                    val topInset = 120f
 
                     val myMeasured = textMeasurer.measure(
                         myLabel,
                         TextStyle(
-                            fontSize = (12 / scaleFactor).sp,
+                            fontSize = 30.sp,
                             fontWeight = FontWeight.Bold,
                             fontFamily = FontFamily.Monospace,
                             color = myColor,
@@ -535,17 +521,17 @@ fun MultiplayerGame(
                     val oppMeasured = textMeasurer.measure(
                         oppLabel,
                         TextStyle(
-                            fontSize = (12 / scaleFactor).sp,
+                            fontSize = 30.sp,
                             fontFamily = FontFamily.Monospace,
                             color = oppColor,
                         ),
                     )
                     drawText(myMeasured, topLeft = Offset(pad, pad + topInset))
-                    drawText(oppMeasured, topLeft = Offset(pad, pad + topInset + myMeasured.size.height + 4f))
+                    drawText(oppMeasured, topLeft = Offset(pad, pad + topInset + myMeasured.size.height + 10f))
 
                     // Game over overlay
                     if (mpState.winner != null) {
-                        drawRect(Color(0xCC000000))
+                        drawRect(Color(0xCC000000), size = Size(GAME_WIDTH, GAME_HEIGHT))
 
                         val iWon = mpState.winner == myPlayerId
                         val title = if (iWon) "YOU WIN" else "YOU LOSE"
@@ -554,7 +540,7 @@ fun MultiplayerGame(
                         val titleMeasured = textMeasurer.measure(
                             title,
                             TextStyle(
-                                fontSize = (48 / scaleFactor).sp,
+                                fontSize = 120.sp,
                                 fontWeight = FontWeight.Bold,
                                 fontFamily = gameFont,
                                 color = titleColor,
@@ -563,8 +549,8 @@ fun MultiplayerGame(
                         drawText(
                             titleMeasured,
                             topLeft = Offset(
-                                size.width / 2f - titleMeasured.size.width / 2f,
-                                size.height / 2f - titleMeasured.size.height / 2f - 20f,
+                                GAME_WIDTH / 2f - titleMeasured.size.width / 2f,
+                                GAME_HEIGHT / 2f - titleMeasured.size.height / 2f - 50f,
                             ),
                         )
                     }
@@ -574,7 +560,7 @@ fun MultiplayerGame(
                     val waitMeasured = textMeasurer.measure(
                         waitText,
                         TextStyle(
-                            fontSize = (18 / scaleFactor).sp,
+                            fontSize = 45.sp,
                             fontWeight = FontWeight.Bold,
                             fontFamily = gameFont,
                             color = PLAYER1_COLOR,
@@ -583,19 +569,22 @@ fun MultiplayerGame(
                     drawText(
                         waitMeasured,
                         topLeft = Offset(
-                            size.width / 2f - waitMeasured.size.width / 2f,
-                            size.height / 2f - waitMeasured.size.height / 2f,
+                            GAME_WIDTH / 2f - waitMeasured.size.width / 2f,
+                            GAME_HEIGHT / 2f - waitMeasured.size.height / 2f,
                         ),
                     )
                 }
+                    }
+                }
             }
+        }
 
             // Rematch / back buttons overlay
             if (mpState.winner != null) {
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
-                        .padding(bottom = (56 / scaleFactor).dp),
+                        .padding(bottom = 56.dp),
                     contentAlignment = Alignment.BottomCenter,
                 ) {
                     Row(
@@ -611,19 +600,19 @@ fun MultiplayerGame(
                         Box(
                             modifier = Modifier
                                 .border(
-                                    width = (1 / scaleFactor).dp,
+                                    width = 1.dp,
                                     color = rematchColor,
                                     shape = RoundedCornerShape(4.dp),
                                 )
                                 .let { if (!rematchRequested) it.clickable { doRematch() } else it }
-                                .pointerHoverIcon(if (!rematchRequested) PointerIcon.Hand else PointerIcon.Default)
-                                .padding(horizontal = (24 / scaleFactor).dp, vertical = (12 / scaleFactor).dp),
+                                .padding(horizontal = 24.dp, vertical = 12.dp),
+                            contentAlignment = Alignment.Center,
                         ) {
                             Text(
                                 text = rematchText,
                                 fontFamily = gameFont,
                                 fontWeight = FontWeight.Bold,
-                                fontSize = (14 / scaleFactor).sp,
+                                fontSize = 16.sp,
                                 color = rematchColor,
                             )
                         }
@@ -632,7 +621,7 @@ fun MultiplayerGame(
                         Box(
                             modifier = Modifier
                                 .border(
-                                    width = (1 / scaleFactor).dp,
+                                    width = 1.dp,
                                     color = Color(0xFF666666),
                                     shape = RoundedCornerShape(4.dp),
                                 )
@@ -640,14 +629,14 @@ fun MultiplayerGame(
                                     connector.disconnect()
                                     onBack()
                                 }
-                                .pointerHoverIcon(PointerIcon.Hand)
-                                .padding(horizontal = (24 / scaleFactor).dp, vertical = (12 / scaleFactor).dp),
+                                .padding(horizontal = 24.dp, vertical = 12.dp),
+                            contentAlignment = Alignment.Center,
                         ) {
                             Text(
-                                text = "MENU",
+                                text = "LEAVE",
                                 fontFamily = gameFont,
                                 fontWeight = FontWeight.Bold,
-                                fontSize = (14 / scaleFactor).sp,
+                                fontSize = 16.sp,
                                 color = Color(0xFF666666),
                             )
                         }
@@ -655,7 +644,7 @@ fun MultiplayerGame(
                 }
             }
         }
-    }
+
 
     LaunchedEffect(Unit) { focusRequester.requestFocus() }
     LaunchedEffect(mpState.winner) { focusRequester.requestFocus() }
