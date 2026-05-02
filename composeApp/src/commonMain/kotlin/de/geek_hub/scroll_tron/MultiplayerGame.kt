@@ -331,7 +331,7 @@ fun MultiplayerGame(
 
     // Sync counter — send full state every N frames (host only)
     var syncCounter by remember { mutableStateOf(0) }
-    val syncInterval = 1  // send every frame for smooth gameplay
+    val syncInterval = 3  // host sends syncs every 3 frames, guest predicts locally
 
     val focusRequester = remember { FocusRequester() }
     val textMeasurer   = rememberTextMeasurer()
@@ -403,7 +403,7 @@ fun MultiplayerGame(
         }
     }
 
-    // Game loop (host runs physics, guest just renders)
+    // Game loop (both run physics locally for smoothness, host sends syncs to correct drift)
     LaunchedEffect(gameStarted) {
         if (!gameStarted) return@LaunchedEffect
         var lastFrame = 0L
@@ -413,19 +413,22 @@ fun MultiplayerGame(
                 val elapsed = (nanos - lastFrame) / 1_000_000L
                 if (elapsed >= 14L) {
                     lastFrame = nanos
-                    if (isHost && canvasWidth > 0f && canvasHeight > 0f) {
+                    if (canvasWidth > 0f && canvasHeight > 0f) {
+                        // Both host and guest step physics locally for smoothness
                         mpState = stepMultiplayer(mpState, canvasWidth, canvasHeight)
 
-                        // Send state sync to guest
-                        syncCounter++
-                        if (syncCounter >= syncInterval) {
-                            syncCounter = 0
-                            connector.sendGameSync(stateToSyncData(mpState))
-                        }
+                        if (isHost) {
+                            // Send state sync to guest to correct any drift
+                            syncCounter++
+                            if (syncCounter >= syncInterval) {
+                                syncCounter = 0
+                                connector.sendGameSync(stateToSyncData(mpState))
+                            }
 
-                        // Notify game over
-                        if (mpState.winner != null) {
-                            connector.sendGameOver(if (mpState.winner == PlayerId.Player1) 1 else 2)
+                            // Notify game over
+                            if (mpState.winner != null) {
+                                connector.sendGameOver(if (mpState.winner == PlayerId.Player1) 1 else 2)
+                            }
                         }
                     }
                 }
