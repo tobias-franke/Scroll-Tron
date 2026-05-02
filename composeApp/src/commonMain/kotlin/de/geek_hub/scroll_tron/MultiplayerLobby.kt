@@ -204,7 +204,7 @@ fun MultiplayerLobby(
                     Spacer(modifier = Modifier.height(16.dp))
 
                     // Animated waiting indicator
-                    val dots = ".".repeat(((frameCount * 2).toInt() % 4))
+                    val dots = ".".repeat(((frameCount * 0.5f).toInt() % 4))
                     Text(
                         text = "WAITING FOR PLAYER$dots",
                         fontFamily = gameFont,
@@ -273,7 +273,7 @@ fun MultiplayerLobby(
 
                 // Join: connecting
                 lobbyMode == LobbyMode.Join && connState == LobbyConnectionState.Connecting -> {
-                    val dots = ".".repeat(((frameCount * 2).toInt() % 4))
+                    val dots = ".".repeat(((frameCount * 0.5f).toInt() % 4))
                     Text(
                         text = "CONNECTING$dots",
                         fontFamily = gameFont,
