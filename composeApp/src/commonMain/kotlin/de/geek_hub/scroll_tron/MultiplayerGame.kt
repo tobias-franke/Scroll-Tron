@@ -268,7 +268,7 @@ private fun stateToSyncData(state: MultiplayerGameState): GameSyncData {
 }
 
 private fun MultiplayerGameState.applySyncData(data: GameSyncData): MultiplayerGameState {
-    val winner = when {
+    val newWinner = winner ?: when {
         data.p1Dead && data.p2Dead -> PlayerId.Player1
         data.p1Dead -> PlayerId.Player2
         data.p2Dead -> PlayerId.Player1
@@ -306,7 +306,7 @@ private fun MultiplayerGameState.applySyncData(data: GameSyncData): MultiplayerG
             trail = p2Trail,
             isDead = data.p2Dead,
         ),
-        winner = winner,
+        winner = newWinner,
     )
 }
 
@@ -331,7 +331,7 @@ fun MultiplayerGame(
 
     // Sync counter — send full state every N frames (host only)
     var syncCounter by remember { mutableStateOf(0) }
-    val syncInterval = 3  // host sends syncs every 3 frames, guest predicts locally
+    val syncInterval = 1  // host sends syncs every frame
 
     val focusRequester = remember { FocusRequester() }
     val textMeasurer   = rememberTextMeasurer()
@@ -403,7 +403,7 @@ fun MultiplayerGame(
         }
     }
 
-    // Game loop (both run physics locally for smoothness, host sends syncs to correct drift)
+    // Game loop (host runs physics, guest just renders)
     LaunchedEffect(gameStarted) {
         if (!gameStarted) return@LaunchedEffect
         var lastFrame = 0L
@@ -413,22 +413,20 @@ fun MultiplayerGame(
                 val elapsed = (nanos - lastFrame) / 1_000_000L
                 if (elapsed >= 14L) {
                     lastFrame = nanos
-                    if (canvasWidth > 0f && canvasHeight > 0f) {
-                        // Both host and guest step physics locally for smoothness
+                    if (isHost && canvasWidth > 0f && canvasHeight > 0f) {
+                        // Host steps physics
                         mpState = stepMultiplayer(mpState, canvasWidth, canvasHeight)
 
-                        if (isHost) {
-                            // Send state sync to guest to correct any drift
-                            syncCounter++
-                            if (syncCounter >= syncInterval) {
-                                syncCounter = 0
-                                connector.sendGameSync(stateToSyncData(mpState))
-                            }
+                        // Send state sync to guest
+                        syncCounter++
+                        if (syncCounter >= syncInterval) {
+                            syncCounter = 0
+                            connector.sendGameSync(stateToSyncData(mpState))
+                        }
 
-                            // Notify game over
-                            if (mpState.winner != null) {
-                                connector.sendGameOver(if (mpState.winner == PlayerId.Player1) 1 else 2)
-                            }
+                        // Notify game over
+                        if (mpState.winner != null) {
+                            connector.sendGameOver(if (mpState.winner == PlayerId.Player1) 1 else 2)
                         }
                     }
                 }
@@ -476,11 +474,6 @@ fun MultiplayerGame(
                     } else {
                         // Guest sends input to host
                         connector.sendPlayerInput(impulse)
-                        // Optimistic local update for responsiveness
-                        val p2 = mpState.player2
-                        mpState = mpState.copy(
-                            player2 = p2.copy(angularVelocity = p2.angularVelocity + impulse)
-                        )
                     }
                 }
             },
