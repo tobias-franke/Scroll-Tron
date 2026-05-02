@@ -461,6 +461,7 @@ fun MultiplayerGame(
                 connector.sendGameStart(GAME_WIDTH, GAME_HEIGHT)
             }
         }
+        focusRequester.requestFocus()
     }
 
     BoxWithConstraints(
