@@ -63,11 +63,31 @@ private fun segmentsIntersect(
     val rx = p2.x - p1.x;  val ry = p2.y - p1.y
     val sx = q2.x - q1.x;  val sy = q2.y - q1.y
     val denom = cross(rx, ry, sx, sy)
-    if (abs(denom) < 1e-6f) return false
     val dx = q1.x - p1.x;  val dy = q1.y - p1.y
+    
+    if (abs(denom) < 1e-6f) {
+        // Parallel or collinear
+        if (abs(cross(dx, dy, rx, ry)) < 1e-6f) {
+            // Collinear: Check bounding box overlap
+            val pMinX = kotlin.math.min(p1.x, p2.x)
+            val pMaxX = kotlin.math.max(p1.x, p2.x)
+            val qMinX = kotlin.math.min(q1.x, q2.x)
+            val qMaxX = kotlin.math.max(q1.x, q2.x)
+            
+            val pMinY = kotlin.math.min(p1.y, p2.y)
+            val pMaxY = kotlin.math.max(p1.y, p2.y)
+            val qMinY = kotlin.math.min(q1.y, q2.y)
+            val qMaxY = kotlin.math.max(q1.y, q2.y)
+            
+            return kotlin.math.max(pMinX, qMinX) <= kotlin.math.min(pMaxX, qMaxX) + 1e-4f &&
+                   kotlin.math.max(pMinY, qMinY) <= kotlin.math.min(pMaxY, qMaxY) + 1e-4f
+        }
+        return false
+    }
+    
     val t = cross(dx, dy, sx, sy) / denom
     val u = cross(dx, dy, rx, ry) / denom
-    return t in 0f..1f && u in 0f..1f
+    return t in -1e-4f..1.0001f && u in -1e-4f..1.0001f
 }
 
 // ---------------------------------------------------------------------------
