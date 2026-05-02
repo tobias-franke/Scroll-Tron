@@ -12,6 +12,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.input.pointer.PointerIcon
 import androidx.compose.ui.input.pointer.pointerHoverIcon
@@ -57,6 +59,13 @@ fun MultiplayerLobby(
     var connState by remember { mutableStateOf(LobbyConnectionState.Idle) }
     var joinCode  by remember { mutableStateOf("") }
     var errorMsg  by remember { mutableStateOf<String?>(null) }
+    val focusRequester = remember { FocusRequester() }
+
+    LaunchedEffect(lobbyMode) {
+        if (lobbyMode == LobbyMode.Join) {
+            focusRequester.requestFocus()
+        }
+    }
 
     // Pulse animation
     var frameCount by remember { mutableStateOf(0f) }
@@ -232,6 +241,7 @@ fun MultiplayerLobby(
                     ) {
                         BasicTextField(
                             value = joinCode,
+                            modifier = Modifier.focusRequester(focusRequester),
                             onValueChange = { newValue ->
                                 // Only allow valid characters, max 4
                                 val filtered = newValue.uppercase()
