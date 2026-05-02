@@ -17,6 +17,18 @@ data class GameState(
 )
 
 // ---------------------------------------------------------------------------
+// Multiplayer models
+// ---------------------------------------------------------------------------
+
+enum class PlayerId { Player1, Player2 }
+
+data class MultiplayerGameState(
+    val player1: GameState,
+    val player2: GameState,
+    val winner: PlayerId? = null,    // set when one player survives
+)
+
+// ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
 
@@ -24,3 +36,4 @@ const val SPEED = 3f
 const val STEERING_SENSITIVITY = 0.03f
 const val ANGULAR_DECAY = 0.80f    // fraction of angularVelocity kept per frame
 const val SKIP_SEGMENTS = 4        // ignore last N trail segs for self-collision
+

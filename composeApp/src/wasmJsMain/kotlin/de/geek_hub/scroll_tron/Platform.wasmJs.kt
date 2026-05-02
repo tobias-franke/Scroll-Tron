@@ -12,3 +12,5 @@ actual fun openUrl(url: String) = jsOpenUrl(url)
 private external fun jsGetPlatformScaleFactor(): Float
 
 actual fun getPlatformScaleFactor(): Float = jsGetPlatformScaleFactor()
+
+actual fun isMultiplayerSupported(): Boolean = false
