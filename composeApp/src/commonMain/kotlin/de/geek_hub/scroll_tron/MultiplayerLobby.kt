@@ -23,6 +23,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.input.key.*
 import org.jetbrains.compose.resources.Font
 import scrolltron.composeapp.generated.resources.Res
 import scrolltron.composeapp.generated.resources.orbitron_bold
@@ -241,7 +242,16 @@ fun MultiplayerLobby(
                     ) {
                         BasicTextField(
                             value = joinCode,
-                            modifier = Modifier.focusRequester(focusRequester),
+                            modifier = Modifier
+                                .focusRequester(focusRequester)
+                                .onKeyEvent { event ->
+                                    if (event.type == KeyEventType.KeyDown && event.key == Key.Enter) {
+                                        if (joinCode.length == 4) {
+                                            connector.joinGame(joinCode)
+                                            true
+                                        } else false
+                                    } else false
+                                },
                             onValueChange = { newValue ->
                                 // Only allow valid characters, max 4
                                 val filtered = newValue.uppercase()
