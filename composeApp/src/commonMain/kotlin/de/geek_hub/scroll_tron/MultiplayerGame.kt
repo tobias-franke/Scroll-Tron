@@ -341,7 +341,7 @@ fun MultiplayerGame(
 
     // Sync counter — send full state every N frames (host only)
     var syncCounter by remember { mutableStateOf(0) }
-    val syncInterval = 3  // send every 3 frames for smooth gameplay
+    val syncInterval = 1  // send every frame for smooth gameplay
 
     val focusRequester = remember { FocusRequester() }
     val textMeasurer   = rememberTextMeasurer()
