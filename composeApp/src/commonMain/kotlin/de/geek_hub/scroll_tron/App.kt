@@ -4,8 +4,10 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.focusable
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.requiredSize
@@ -681,23 +683,48 @@ fun SingleplayerGame(onBack: () -> Unit = {}) {
                     .padding(bottom = (56 / scaleFactor).dp),
                 contentAlignment = Alignment.BottomCenter,
             ) {
-                Box(
-                    modifier = Modifier
-                        .border(
-                            width = (1 / scaleFactor).dp,
-                            color = trailColor,
-                            shape = RoundedCornerShape(4.dp),
-                        )
-                        .clickable { doRestart() }
-                        .padding(horizontal = (36 / scaleFactor).dp, vertical = (12 / scaleFactor).dp),
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy((16 / scaleFactor).dp),
                 ) {
-                    Text(
-                        text       = "RESTART",
-                        fontFamily = gameFont,
-                        fontWeight = FontWeight.Bold,
-                        fontSize   = (16 / scaleFactor).sp,
-                        color      = trailColor,
-                    )
+                    Box(
+                        modifier = Modifier
+                            .border(
+                                width = (1 / scaleFactor).dp,
+                                color = trailColor,
+                                shape = RoundedCornerShape(4.dp),
+                            )
+                            .clickable { doRestart() }
+                            .padding(horizontal = (36 / scaleFactor).dp, vertical = (12 / scaleFactor).dp),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Text(
+                            text       = "RESTART",
+                            fontFamily = gameFont,
+                            fontWeight = FontWeight.Bold,
+                            fontSize   = (16 / scaleFactor).sp,
+                            color      = trailColor,
+                        )
+                    }
+
+                    Box(
+                        modifier = Modifier
+                            .border(
+                                width = (1 / scaleFactor).dp,
+                                color = Color(0xFF666666),
+                                shape = RoundedCornerShape(4.dp),
+                            )
+                            .clickable { onBack() }
+                            .padding(horizontal = (36 / scaleFactor).dp, vertical = (12 / scaleFactor).dp),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Text(
+                            text       = "MAIN MENU",
+                            fontFamily = gameFont,
+                            fontWeight = FontWeight.Bold,
+                            fontSize   = (16 / scaleFactor).sp,
+                            color      = Color(0xFF666666),
+                        )
+                    }
                 }
             }
         }
