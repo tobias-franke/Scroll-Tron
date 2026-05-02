@@ -209,7 +209,7 @@ fun MultiplayerLobby(
                         text = "WAITING FOR PLAYER$dots",
                         fontFamily = gameFont,
                         fontSize = 14.sp,
-                        color = NEON_CYAN.copy(alpha = pulse),
+                        color = NEON_CYAN,
                     )
                 }
 
@@ -278,7 +278,7 @@ fun MultiplayerLobby(
                         text = "CONNECTING$dots",
                         fontFamily = gameFont,
                         fontSize = 18.sp,
-                        color = NEON_PINK.copy(alpha = pulse),
+                        color = NEON_PINK,
                     )
                 }
             }
