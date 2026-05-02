@@ -346,6 +346,7 @@ fun MultiplayerGame(
     var gameStarted by remember { mutableStateOf(false) }
     var rematchRequested by remember { mutableStateOf(false) }
     var opponentRematch  by remember { mutableStateOf(false) }
+    var isLeaving by remember { mutableStateOf(false) }
 
     // Sync counter — send full state every N frames (host only)
     var syncCounter by remember { mutableStateOf(0) }
@@ -368,6 +369,13 @@ fun MultiplayerGame(
 
     // Set up message handlers
     LaunchedEffect(connector) {
+        connector.onStateChanged { state ->
+            if ((state == LobbyConnectionState.Idle || state == LobbyConnectionState.Error) && !isLeaving) {
+                isLeaving = true
+                onBack()
+            }
+        }
+
         connector.onGameStartReceived { _, _ ->
             if (!isHost) {
                 // Guest received start signal from host
@@ -463,7 +471,13 @@ fun MultiplayerGame(
             .onKeyEvent { event ->
                 if (event.type != KeyEventType.KeyDown) return@onKeyEvent false
                 when (event.key) {
-                    Key.Escape -> { onBack(); true }
+                    Key.Escape -> {
+                        if (!isLeaving) {
+                            isLeaving = true
+                            onBack()
+                        }
+                        true
+                    }
                     Key.R -> if (mpState.winner != null) { doRematch(); true } else false
                     else -> false
                 }
@@ -647,8 +661,11 @@ fun MultiplayerGame(
                                     shape = RoundedCornerShape(4.dp),
                                 )
                                 .clickable {
-                                    connector.disconnect()
-                                    onBack()
+                                    if (!isLeaving) {
+                                        isLeaving = true
+                                        connector.disconnect()
+                                        onBack()
+                                    }
                                 }
                                 .padding(horizontal = 24.dp, vertical = 12.dp),
                             contentAlignment = Alignment.Center,
