@@ -227,8 +227,7 @@ fun MultiplayerLobby(
                     Box(
                         modifier = Modifier
                             .border(2.dp, NEON_PINK.copy(alpha = 0.5f), RoundedCornerShape(8.dp))
-                            .padding(horizontal = 24.dp, vertical = 12.dp)
-                            .width(240.dp),
+                            .padding(horizontal = 32.dp, vertical = 16.dp),
                         contentAlignment = Alignment.Center,
                     ) {
                         BasicTextField(
@@ -241,25 +240,36 @@ fun MultiplayerLobby(
                                 joinCode = filtered
                             },
                             textStyle = TextStyle(
-                                fontSize = 36.sp,
-                                fontWeight = FontWeight.Bold,
+                                fontSize = 48.sp,
                                 fontFamily = gameFont,
-                                color = NEON_PINK,
-                                textAlign = TextAlign.Center,
-                                letterSpacing = 8.sp,
+                                color = Color.Transparent, // Hide actual text
                             ),
                             singleLine = true,
-                            cursorBrush = SolidColor(NEON_PINK),
+                            cursorBrush = SolidColor(Color.Transparent), // Hide default cursor
+                            decorationBox = { innerTextField ->
+                                Box(contentAlignment = Alignment.Center) {
+                                    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                                        for (i in 0 until 4) {
+                                            val char = joinCode.getOrNull(i)
+                                            val isCurrentFocus = i == joinCode.length
+                                            val charToDraw = char?.toString() ?: "_"
+                                            val alpha = if (char != null) 1f else if (isCurrentFocus) pulse else 0.3f
+                                            
+                                            Text(
+                                                text = charToDraw,
+                                                fontFamily = gameFont,
+                                                fontSize = 48.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = NEON_PINK.copy(alpha = alpha),
+                                            )
+                                        }
+                                    }
+                                    Box(modifier = Modifier.matchParentSize()) {
+                                        innerTextField()
+                                    }
+                                }
+                            }
                         )
-                        if (joinCode.isEmpty()) {
-                            Text(
-                                text = "_ _ _ _",
-                                fontFamily = gameFont,
-                                fontSize = 36.sp,
-                                color = NEON_PINK.copy(alpha = 0.3f),
-                                letterSpacing = 8.sp,
-                            )
-                        }
                     }
 
                     Spacer(modifier = Modifier.height(24.dp))
