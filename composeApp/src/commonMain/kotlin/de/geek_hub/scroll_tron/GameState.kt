@@ -12,7 +12,7 @@ data class GameState(
     val position: Point,
     val angle: Float,               // current heading in radians
     val angularVelocity: Float,     // weighty steering — decays each frame
-    val trail: List<LineSegment>,
+    val trail: MutableList<LineSegment>,
     val isDead: Boolean,
 )
 

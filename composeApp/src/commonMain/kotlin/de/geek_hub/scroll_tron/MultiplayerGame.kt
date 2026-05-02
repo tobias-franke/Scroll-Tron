@@ -115,14 +115,14 @@ private fun mpInitialState(): MultiplayerGameState {
             position = Point(p1x, p1y),
             angle = 0f,          // heading right →
             angularVelocity = 0f,
-            trail = emptyList(),
+            trail = mutableListOf(),
             isDead = false,
         ),
         player2 = GameState(
             position = Point(p2x, p2y),
             angle = kotlin.math.PI.toFloat(),  // heading left ←
             angularVelocity = 0f,
-            trail = emptyList(),
+            trail = mutableListOf(),
             isDead = false,
         ),
         winner = null,
@@ -148,28 +148,38 @@ private fun stepPlayer(
     val newPos = Point(oldPos.x + dx, oldPos.y + dy)
 
     val newSegment = LineSegment(oldPos, newPos)
-    val newTrail = state.trail + newSegment
+    state.trail.add(newSegment)
 
     // Wall collision
     val wallHit = newPos.x < 0 || newPos.x > GAME_WIDTH ||
                   newPos.y < 0 || newPos.y > GAME_HEIGHT
 
     // Self-collision
-    val selfHit = if (newTrail.size > SKIP_SEGMENTS) {
-        val safeTrail = newTrail.dropLast(SKIP_SEGMENTS)
-        safeTrail.any { seg -> segmentsIntersect(newSegment.start, newSegment.end, seg.start, seg.end) }
-    } else false
+    var selfHit = false
+    val endIdx = state.trail.size - SKIP_SEGMENTS - 1
+    for (i in 0..endIdx) {
+        val seg = state.trail[i]
+        if (segmentsIntersect(newSegment.start, newSegment.end, seg.start, seg.end)) {
+            selfHit = true
+            break
+        }
+    }
 
     // Cross-player collision (hit opponent's trail)
-    val crossHit = opponentTrail.any { seg ->
-        segmentsIntersect(newSegment.start, newSegment.end, seg.start, seg.end)
+    var crossHit = false
+    for (i in 0 until opponentTrail.size) {
+        val seg = opponentTrail[i]
+        if (segmentsIntersect(newSegment.start, newSegment.end, seg.start, seg.end)) {
+            crossHit = true
+            break
+        }
     }
 
     return state.copy(
         position = newPos,
         angle = newAngle,
         angularVelocity = newAngVel,
-        trail = newTrail,
+        // trail reference stays the same
         isDead = wallHit || selfHit || crossHit,
     )
 }
@@ -233,24 +243,23 @@ private fun DrawScope.drawBorder() {
 
 private fun DrawScope.drawTrail(trail: List<LineSegment>, trailColor: Color) {
     if (trail.isEmpty()) return
-    val total = trail.size.toFloat()
-    trail.forEachIndexed { i, seg ->
-        val alpha = 0.35f + 0.65f * (i / total)
-        drawLine(
-            color = trailColor.copy(alpha = alpha * 0.35f),
-            start = Offset(seg.start.x, seg.start.y),
-            end   = Offset(seg.end.x,   seg.end.y),
-            strokeWidth = 8f,
-            cap = StrokeCap.Round,
-        )
-        drawLine(
-            color = trailColor.copy(alpha = alpha),
-            start = Offset(seg.start.x, seg.start.y),
-            end   = Offset(seg.end.x,   seg.end.y),
-            strokeWidth = 2.5f,
-            cap = StrokeCap.Round,
-        )
+
+    val path = Path()
+    path.moveTo(trail[0].start.x, trail[0].start.y)
+    for (i in trail.indices) {
+        path.lineTo(trail[i].end.x, trail[i].end.y)
     }
+
+    drawPath(
+        path = path,
+        color = trailColor.copy(alpha = 0.35f),
+        style = Stroke(width = 8f, cap = StrokeCap.Round, join = androidx.compose.ui.graphics.StrokeJoin.Round),
+    )
+    drawPath(
+        path = path,
+        color = trailColor,
+        style = Stroke(width = 2.5f, cap = StrokeCap.Round, join = androidx.compose.ui.graphics.StrokeJoin.Round),
+    )
 }
 
 private fun DrawScope.drawHead(pos: Point, angleDeg: Float, trailColor: Color) {
@@ -298,19 +307,17 @@ private fun MultiplayerGameState.applySyncData(data: GameSyncData): MultiplayerG
     
     val newP1Pos = Point(data.p1X, data.p1Y)
     val p1DistSq = (player1.position.x - newP1Pos.x)*(player1.position.x - newP1Pos.x) + (player1.position.y - newP1Pos.y)*(player1.position.y - newP1Pos.y)
-    val p1Trail = if (data.p1Dead || p1DistSq > 10000f) {
-        player1.trail
-    } else {
-        player1.trail + LineSegment(player1.position, newP1Pos)
+    if (!data.p1Dead && p1DistSq <= 10000f) {
+        player1.trail.add(LineSegment(player1.position, newP1Pos))
     }
+    val p1Trail = player1.trail
 
     val newP2Pos = Point(data.p2X, data.p2Y)
     val p2DistSq = (player2.position.x - newP2Pos.x)*(player2.position.x - newP2Pos.x) + (player2.position.y - newP2Pos.y)*(player2.position.y - newP2Pos.y)
-    val p2Trail = if (data.p2Dead || p2DistSq > 10000f) {
-        player2.trail
-    } else {
-        player2.trail + LineSegment(player2.position, newP2Pos)
+    if (!data.p2Dead && p2DistSq <= 10000f) {
+        player2.trail.add(LineSegment(player2.position, newP2Pos))
     }
+    val p2Trail = player2.trail
 
     return MultiplayerGameState(
         player1 = GameState(
