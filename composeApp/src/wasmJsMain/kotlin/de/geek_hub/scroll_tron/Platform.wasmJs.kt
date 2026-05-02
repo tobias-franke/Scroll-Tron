@@ -13,4 +13,4 @@ private external fun jsGetPlatformScaleFactor(): Float
 
 actual fun getPlatformScaleFactor(): Float = jsGetPlatformScaleFactor()
 
-actual fun isMultiplayerSupported(): Boolean = false
+actual fun isMultiplayerSupported(): Boolean = true
