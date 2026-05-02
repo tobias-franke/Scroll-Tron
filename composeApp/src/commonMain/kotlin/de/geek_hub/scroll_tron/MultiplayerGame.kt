@@ -74,8 +74,8 @@ private fun segmentsIntersect(
 // Multiplayer initial state
 // ---------------------------------------------------------------------------
 
-const val GAME_WIDTH = 2000f
-const val GAME_HEIGHT = 2000f
+const val GAME_WIDTH = 3200f
+const val GAME_HEIGHT = 1800f
 
 private fun mpInitialState(): MultiplayerGameState {
     val gridStep = 60f
@@ -474,14 +474,15 @@ fun MultiplayerGame(
             contentAlignment = Alignment.Center
         ) {
             Canvas(modifier = Modifier.fillMaxSize()) {
+                // Draw background for the entire screen (including letterbox areas)
+                drawRect(Color(0xFF020C02))
+
                 val fitScale = minOf(size.width / GAME_WIDTH, size.height / GAME_HEIGHT)
                 val dx = (size.width - GAME_WIDTH * fitScale) / 2f
                 val dy = (size.height - GAME_HEIGHT * fitScale) / 2f
 
                 translate(left = dx, top = dy) {
                     scale(scale = fitScale, pivot = Offset.Zero) {
-                        // Background
-                        drawRect(Color(0xFF020C02), size = Size(GAME_WIDTH, GAME_HEIGHT))
                         drawGrid()
                         drawBorder()
 
