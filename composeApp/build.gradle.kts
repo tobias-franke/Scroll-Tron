@@ -41,7 +41,7 @@ kotlin {
             implementation(libs.kotlinx.coroutinesSwing)
         }
         jsMain.dependencies {
-            implementation(npm("peerjs", "1.5.4"))
+            implementation(npm("peerjs", "1.5.5"))
         }
     }
 }
