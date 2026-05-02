@@ -62,9 +62,7 @@ abstract class MultiplayerConnector {
 /** Flattened game state for network transfer. */
 data class GameSyncData(
     val p1X: Float, val p1Y: Float, val p1Angle: Float, val p1AngVel: Float, val p1Dead: Boolean,
-    val p1TrailXs: List<Float>, val p1TrailYs: List<Float>,
     val p2X: Float, val p2Y: Float, val p2Angle: Float, val p2AngVel: Float, val p2Dead: Boolean,
-    val p2TrailXs: List<Float>, val p2TrailYs: List<Float>,
 )
 
 /** Factory function — platform-specific. */

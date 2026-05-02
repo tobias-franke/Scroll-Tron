@@ -254,63 +254,53 @@ private fun DrawScope.drawHead(pos: Point, angleDeg: Float, trailColor: Color) {
     }
 }
 
-// ---------------------------------------------------------------------------
-// Convert GameState trails to GameSyncData for network transfer
-// ---------------------------------------------------------------------------
 
-private fun trailToXY(trail: List<LineSegment>): Pair<List<Float>, List<Float>> {
-    if (trail.isEmpty()) return emptyList<Float>() to emptyList()
-    // Encode as start of first segment + all end points
-    val xs = mutableListOf(trail.first().start.x)
-    val ys = mutableListOf(trail.first().start.y)
-    trail.forEach { seg ->
-        xs.add(seg.end.x)
-        ys.add(seg.end.y)
-    }
-    return xs to ys
-}
-
-private fun xyToTrail(xs: List<Float>, ys: List<Float>): List<LineSegment> {
-    if (xs.size < 2) return emptyList()
-    return (0 until xs.size - 1).map { i ->
-        LineSegment(Point(xs[i], ys[i]), Point(xs[i + 1], ys[i + 1]))
-    }
-}
 
 private fun stateToSyncData(state: MultiplayerGameState): GameSyncData {
-    val (p1xs, p1ys) = trailToXY(state.player1.trail)
-    val (p2xs, p2ys) = trailToXY(state.player2.trail)
     return GameSyncData(
         p1X = state.player1.position.x, p1Y = state.player1.position.y,
         p1Angle = state.player1.angle, p1AngVel = state.player1.angularVelocity,
         p1Dead = state.player1.isDead,
-        p1TrailXs = p1xs, p1TrailYs = p1ys,
         p2X = state.player2.position.x, p2Y = state.player2.position.y,
         p2Angle = state.player2.angle, p2AngVel = state.player2.angularVelocity,
         p2Dead = state.player2.isDead,
-        p2TrailXs = p2xs, p2TrailYs = p2ys,
     )
 }
 
-private fun syncDataToState(data: GameSyncData): MultiplayerGameState {
-    val p1Trail = xyToTrail(data.p1TrailXs, data.p1TrailYs)
-    val p2Trail = xyToTrail(data.p2TrailXs, data.p2TrailYs)
+private fun MultiplayerGameState.applySyncData(data: GameSyncData): MultiplayerGameState {
     val winner = when {
         data.p1Dead && data.p2Dead -> PlayerId.Player1
         data.p1Dead -> PlayerId.Player2
         data.p2Dead -> PlayerId.Player1
         else -> null
     }
+    
+    val newP1Pos = Point(data.p1X, data.p1Y)
+    val p1DistSq = (player1.position.x - newP1Pos.x)*(player1.position.x - newP1Pos.x) + (player1.position.y - newP1Pos.y)*(player1.position.y - newP1Pos.y)
+    val p1Trail = if (data.p1Dead || p1DistSq > 10000f) {
+        player1.trail
+    } else {
+        player1.trail + LineSegment(player1.position, newP1Pos)
+    }
+
+    val newP2Pos = Point(data.p2X, data.p2Y)
+    val p2DistSq = (player2.position.x - newP2Pos.x)*(player2.position.x - newP2Pos.x) + (player2.position.y - newP2Pos.y)*(player2.position.y - newP2Pos.y)
+    val p2Trail = if (data.p2Dead || p2DistSq > 10000f) {
+        player2.trail
+    } else {
+        player2.trail + LineSegment(player2.position, newP2Pos)
+    }
+
     return MultiplayerGameState(
         player1 = GameState(
-            position = Point(data.p1X, data.p1Y),
+            position = newP1Pos,
             angle = data.p1Angle,
             angularVelocity = data.p1AngVel,
             trail = p1Trail,
             isDead = data.p1Dead,
         ),
         player2 = GameState(
-            position = Point(data.p2X, data.p2Y),
+            position = newP2Pos,
             angle = data.p2Angle,
             angularVelocity = data.p2AngVel,
             trail = p2Trail,
@@ -390,8 +380,8 @@ fun MultiplayerGame(
 
         connector.onGameSyncReceived { syncData ->
             if (!isHost) {
-                // Guest received authoritative state from host
-                mpState = syncDataToState(syncData)
+                // Guest received authoritative state from host, append trail locally
+                mpState = mpState.applySyncData(syncData)
             }
         }
 

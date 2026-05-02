@@ -164,16 +164,12 @@ class NetworkManager {
 
     fun sendGameSync(
         p1X: Float, p1Y: Float, p1Angle: Float, p1AngVel: Float, p1Dead: Boolean,
-        p1TrailXs: FloatArray, p1TrailYs: FloatArray,
         p2X: Float, p2Y: Float, p2Angle: Float, p2AngVel: Float, p2Dead: Boolean,
-        p2TrailXs: FloatArray, p2TrailYs: FloatArray,
     ) {
         val msg = js("{}")
         msg.type = MessageType.GAME_SYNC
         msg.p1X = p1X; msg.p1Y = p1Y; msg.p1Angle = p1Angle; msg.p1AngVel = p1AngVel; msg.p1Dead = p1Dead
-        msg.p1TrailXs = p1TrailXs; msg.p1TrailYs = p1TrailYs
         msg.p2X = p2X; msg.p2Y = p2Y; msg.p2Angle = p2Angle; msg.p2AngVel = p2AngVel; msg.p2Dead = p2Dead
-        msg.p2TrailXs = p2TrailXs; msg.p2TrailYs = p2TrailYs
         msg.timestamp = window.performance.now()
         send(msg)
     }

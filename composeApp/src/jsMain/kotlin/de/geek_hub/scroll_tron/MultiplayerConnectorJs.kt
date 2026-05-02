@@ -123,12 +123,8 @@ class JsMultiplayerConnector : MultiplayerConnector() {
         msg.type = MessageType.GAME_SYNC
         msg.p1X = data.p1X; msg.p1Y = data.p1Y; msg.p1Angle = data.p1Angle
         msg.p1AngVel = data.p1AngVel; msg.p1Dead = data.p1Dead
-        msg.p1TrailXs = data.p1TrailXs.toTypedArray()
-        msg.p1TrailYs = data.p1TrailYs.toTypedArray()
         msg.p2X = data.p2X; msg.p2Y = data.p2Y; msg.p2Angle = data.p2Angle
         msg.p2AngVel = data.p2AngVel; msg.p2Dead = data.p2Dead
-        msg.p2TrailXs = data.p2TrailXs.toTypedArray()
-        msg.p2TrailYs = data.p2TrailYs.toTypedArray()
         network.send(msg)
     }
 
@@ -145,26 +141,17 @@ class JsMultiplayerConnector : MultiplayerConnector() {
     // -----------------------------------------------------------------------
 
     private fun parseGameSync(data: dynamic): GameSyncData {
-        val p1TrailXs = parseFloatArray(data.p1TrailXs)
-        val p1TrailYs = parseFloatArray(data.p1TrailYs)
-        val p2TrailXs = parseFloatArray(data.p2TrailXs)
-        val p2TrailYs = parseFloatArray(data.p2TrailYs)
-
         return GameSyncData(
             p1X = (data.p1X as Number).toFloat(),
             p1Y = (data.p1Y as Number).toFloat(),
             p1Angle = (data.p1Angle as Number).toFloat(),
             p1AngVel = (data.p1AngVel as Number).toFloat(),
             p1Dead = data.p1Dead as Boolean,
-            p1TrailXs = p1TrailXs,
-            p1TrailYs = p1TrailYs,
             p2X = (data.p2X as Number).toFloat(),
             p2Y = (data.p2Y as Number).toFloat(),
             p2Angle = (data.p2Angle as Number).toFloat(),
             p2AngVel = (data.p2AngVel as Number).toFloat(),
             p2Dead = data.p2Dead as Boolean,
-            p2TrailXs = p2TrailXs,
-            p2TrailYs = p2TrailYs,
         )
     }
 
