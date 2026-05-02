@@ -211,7 +211,7 @@ private fun initialState(canvasWidth: Float, canvasHeight: Float): GameState {
         position        = Point(cx, cy),
         angle           = 0f,      // heading right
         angularVelocity = 0f,
-        trail           = emptyList(),
+        trail           = mutableListOf(),
         isDead          = false,
     )
 }
@@ -235,23 +235,28 @@ private fun stepGame(state: GameState, canvasWidth: Float, canvasHeight: Float):
 
     // 3. Build new segment
     val newSegment = LineSegment(oldPos, newPos)
-    val newTrail = state.trail + newSegment
+    state.trail.add(newSegment)
 
     // 4. Wall collision
     val wallHit = newPos.x < 0 || newPos.x > canvasWidth ||
                   newPos.y < 0 || newPos.y > canvasHeight
 
-    // 5. Self-collision — check new segment vs all but last SKIP_SEGMENTS
-    val selfHit = if (newTrail.size > SKIP_SEGMENTS) {
-        val safeTrail = newTrail.dropLast(SKIP_SEGMENTS)
-        safeTrail.any { seg -> segmentsIntersect(newSegment.start, newSegment.end, seg.start, seg.end) }
-    } else false
+    // 5. Self-collision
+    var selfHit = false
+    val endIdx = state.trail.size - SKIP_SEGMENTS - 1
+    for (i in 0..endIdx) {
+        val seg = state.trail[i]
+        if (segmentsIntersect(newSegment.start, newSegment.end, seg.start, seg.end)) {
+            selfHit = true
+            break
+        }
+    }
 
     return state.copy(
         position        = newPos,
         angle           = newAngle,
         angularVelocity = newAngVel,
-        trail           = newTrail,
+        // trail reference stays the same
         isDead          = wallHit || selfHit,
     )
 }
@@ -263,26 +268,23 @@ private fun stepGame(state: GameState, canvasWidth: Float, canvasHeight: Float):
 private fun DrawScope.drawTrail(trail: List<LineSegment>, trailColor: Color) {
     if (trail.isEmpty()) return
 
-    val total = trail.size.toFloat()
-    trail.forEachIndexed { i, seg ->
-        // Fade older segments slightly; recent ones are fully bright
-        val alpha = 0.35f + 0.65f * (i / total)
-        // Glow: draw twice — wide+dim then narrow+bright
-        drawLine(
-            color = trailColor.copy(alpha = alpha * 0.35f),
-            start = Offset(seg.start.x, seg.start.y),
-            end   = Offset(seg.end.x,   seg.end.y),
-            strokeWidth = 8f,
-            cap = StrokeCap.Round,
-        )
-        drawLine(
-            color = trailColor.copy(alpha = alpha),
-            start = Offset(seg.start.x, seg.start.y),
-            end   = Offset(seg.end.x,   seg.end.y),
-            strokeWidth = 2.5f,
-            cap = StrokeCap.Round,
-        )
+    val path = Path()
+    path.moveTo(trail[0].start.x, trail[0].start.y)
+    for (i in trail.indices) {
+        path.lineTo(trail[i].end.x, trail[i].end.y)
     }
+
+    // Glow: draw twice — wide+dim then narrow+bright
+    drawPath(
+        path = path,
+        color = trailColor.copy(alpha = 0.35f),
+        style = Stroke(width = 8f, cap = StrokeCap.Round, join = androidx.compose.ui.graphics.StrokeJoin.Round),
+    )
+    drawPath(
+        path = path,
+        color = trailColor,
+        style = Stroke(width = 2.5f, cap = StrokeCap.Round, join = androidx.compose.ui.graphics.StrokeJoin.Round),
+    )
 }
 
 private fun DrawScope.drawHead(pos: Point, angleDeg: Float, trailColor: Color) {
