@@ -228,7 +228,7 @@ fun MultiplayerLobby(
                         modifier = Modifier
                             .border(2.dp, NEON_PINK.copy(alpha = 0.5f), RoundedCornerShape(8.dp))
                             .padding(horizontal = 24.dp, vertical = 12.dp)
-                            .width(200.dp),
+                            .width(240.dp),
                         contentAlignment = Alignment.Center,
                     ) {
                         BasicTextField(
