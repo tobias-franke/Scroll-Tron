@@ -710,6 +710,7 @@ fun App(onExit: () -> Unit = {}) {
             MainMenu(
                 onSingleplayer = { currentScreen = Screen.Singleplayer },
                 onMultiplayer  = { currentScreen = Screen.MultiplayerLobby },
+                onExit         = onExit,
             )
         }
         is Screen.Singleplayer -> {

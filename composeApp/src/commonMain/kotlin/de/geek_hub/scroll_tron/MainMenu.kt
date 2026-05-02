@@ -25,6 +25,14 @@ import scrolltron.composeapp.generated.resources.Res
 import scrolltron.composeapp.generated.resources.orbitron_bold
 import scrolltron.composeapp.generated.resources.orbitron_regular
 import kotlin.math.sin
+import androidx.compose.foundation.focusable
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onKeyEvent
+import androidx.compose.ui.input.key.type
 
 // ---------------------------------------------------------------------------
 // Neon palette (shared with game)
@@ -43,6 +51,7 @@ private val BG_COLOR    = Color(0xFF020C02)
 fun MainMenu(
     onSingleplayer: () -> Unit,
     onMultiplayer: () -> Unit,
+    onExit: () -> Unit = {},
 ) {
     val gameFont = FontFamily(
         Font(Res.font.orbitron_regular, FontWeight.Normal),
@@ -62,8 +71,19 @@ fun MainMenu(
     }
     val glowAlpha = 0.5f + 0.5f * sin(frameCount)
 
+    val focusRequester = remember { FocusRequester() }
+
     Box(
-        modifier = Modifier.fillMaxSize(),
+        modifier = Modifier
+            .fillMaxSize()
+            .focusRequester(focusRequester)
+            .focusable()
+            .onKeyEvent { event ->
+                if (event.type == KeyEventType.KeyDown && event.key == Key.Escape) {
+                    onExit()
+                    true
+                } else false
+            },
         contentAlignment = Alignment.Center,
     ) {
         // Animated grid background
@@ -182,6 +202,8 @@ fun MainMenu(
             }
         }
     }
+
+    LaunchedEffect(Unit) { focusRequester.requestFocus() }
 }
 
 @Composable
