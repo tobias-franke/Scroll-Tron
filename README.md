@@ -1,4 +1,4 @@
-# 🚀 Scroll-Tron
+# 🥏 Scroll-Tron
 
 
 **Scroll-Tron** is a fast-paced, neon-infused arcade game inspired by the classic Tron light cycles, but with a twist: you steer using your **mouse scroll wheel**. Survive as long as possible, outmaneuver your opponents, and don't hit the walls!
