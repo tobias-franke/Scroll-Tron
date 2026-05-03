@@ -27,7 +27,7 @@ class JsMultiplayerConnector : MultiplayerConnector() {
     private var playerInputCallback: ((Int, Float) -> Unit)? = null
     private var gameSyncCallback: ((GameSyncData) -> Unit)? = null
     private var gameOverCallback: ((Int) -> Unit)? = null
-    private var rematchCallback: (() -> Unit)? = null
+    private var rematchCallback: ((Int) -> Unit)? = null
 
     init {
         network.onStateChanged = { connState ->
@@ -116,7 +116,7 @@ class JsMultiplayerConnector : MultiplayerConnector() {
         gameOverCallback = callback
     }
 
-    override fun onRematchReceived(callback: () -> Unit) {
+    override fun onRematchReceived(callback: (playerIndex: Int) -> Unit) {
         rematchCallback = callback
     }
 

@@ -47,7 +47,7 @@ class NetworkManager {
 
     private var peer: JsPeer? = null
     private val connections = mutableMapOf<Int, JsDataConnection>() // Player index -> Connection
-    private var hostConnection: JsDataConnection? = null // For guests: connection to host
+    internal var hostConnection: JsDataConnection? = null // For guests: connection to host
 
     val numConnections: Int
         get() = connections.size
