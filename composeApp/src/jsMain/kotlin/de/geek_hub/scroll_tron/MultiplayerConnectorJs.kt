@@ -19,9 +19,12 @@ class JsMultiplayerConnector : MultiplayerConnector() {
     override var roomCode: String = ""
         private set
 
+    override val connectedPlayers: Int
+        get() = if (network.hostConnection != null) 2 else network.numConnections + 1
+
     private var stateCallback: ((LobbyConnectionState) -> Unit)? = null
-    private var gameStartCallback: ((Float, Float) -> Unit)? = null
-    private var playerInputCallback: ((Float) -> Unit)? = null
+    private var gameStartCallback: ((Float, Float, Int) -> Unit)? = null
+    private var playerInputCallback: ((Int, Float) -> Unit)? = null
     private var gameSyncCallback: ((GameSyncData) -> Unit)? = null
     private var gameOverCallback: ((Int) -> Unit)? = null
     private var rematchCallback: (() -> Unit)? = null
@@ -44,22 +47,33 @@ class JsMultiplayerConnector : MultiplayerConnector() {
                 MessageType.GAME_START -> {
                     val w = (data.canvasWidth as Number).toFloat()
                     val h = (data.canvasHeight as Number).toFloat()
-                    gameStartCallback?.invoke(w, h)
+                    val idx = (data.playerIndex as Number).toInt()
+                    gameStartCallback?.invoke(w, h, idx)
                 }
                 MessageType.PLAYER_INPUT -> {
+                    val idx = (data.playerIndex as Number).toInt()
                     val angVel = (data.angularVelocity as Number).toFloat()
-                    playerInputCallback?.invoke(angVel)
+                    playerInputCallback?.invoke(idx, angVel)
                 }
                 MessageType.GAME_SYNC -> {
-                    val syncData = parseGameSync(data)
-                    gameSyncCallback?.invoke(syncData)
+                    val players = (data.players as Array<dynamic>).map { p ->
+                        PlayerSyncData(
+                            x = (p.x as Number).toFloat(),
+                            y = (p.y as Number).toFloat(),
+                            angle = (p.angle as Number).toFloat(),
+                            angVel = (p.angVel as Number).toFloat(),
+                            isDead = p.isDead as Boolean
+                        )
+                    }
+                    gameSyncCallback?.invoke(GameSyncData(players))
                 }
                 MessageType.GAME_OVER -> {
                     val winner = (data.winner as Number).toInt()
                     gameOverCallback?.invoke(winner)
                 }
                 MessageType.REMATCH -> {
-                    rematchCallback?.invoke()
+                    val idx = (data.playerIndex as Number?)?.toInt() ?: 0
+                    rematchCallback?.invoke(idx)
                 }
             }
         }
@@ -86,11 +100,11 @@ class JsMultiplayerConnector : MultiplayerConnector() {
         stateCallback = callback
     }
 
-    override fun onGameStartReceived(callback: (canvasWidth: Float, canvasHeight: Float) -> Unit) {
+    override fun onGameStartReceived(callback: (canvasWidth: Float, canvasHeight: Float, playerIndex: Int) -> Unit) {
         gameStartCallback = callback
     }
 
-    override fun onPlayerInputReceived(callback: (angularVelocity: Float) -> Unit) {
+    override fun onPlayerInputReceived(callback: (playerIndex: Int, angularVelocity: Float) -> Unit) {
         playerInputCallback = callback
     }
 
@@ -114,18 +128,12 @@ class JsMultiplayerConnector : MultiplayerConnector() {
         network.sendGameStart(canvasWidth, canvasHeight)
     }
 
-    override fun sendPlayerInput(angularVelocity: Float) {
-        network.sendPlayerInput(angularVelocity)
+    override fun sendPlayerInput(playerIndex: Int, angularVelocity: Float) {
+        network.sendPlayerInput(playerIndex, angularVelocity)
     }
 
     override fun sendGameSync(data: GameSyncData) {
-        val msg = js("{}")
-        msg.type = MessageType.GAME_SYNC
-        msg.p1X = data.p1X; msg.p1Y = data.p1Y; msg.p1Angle = data.p1Angle
-        msg.p1AngVel = data.p1AngVel; msg.p1Dead = data.p1Dead
-        msg.p2X = data.p2X; msg.p2Y = data.p2Y; msg.p2Angle = data.p2Angle
-        msg.p2AngVel = data.p2AngVel; msg.p2Dead = data.p2Dead
-        network.send(msg)
+        network.sendGameSync(data.players)
     }
 
     override fun sendGameOver(winnerIndex: Int) {
@@ -139,21 +147,6 @@ class JsMultiplayerConnector : MultiplayerConnector() {
     // -----------------------------------------------------------------------
     // Parse helpers
     // -----------------------------------------------------------------------
-
-    private fun parseGameSync(data: dynamic): GameSyncData {
-        return GameSyncData(
-            p1X = (data.p1X as Number).toFloat(),
-            p1Y = (data.p1Y as Number).toFloat(),
-            p1Angle = (data.p1Angle as Number).toFloat(),
-            p1AngVel = (data.p1AngVel as Number).toFloat(),
-            p1Dead = data.p1Dead as Boolean,
-            p2X = (data.p2X as Number).toFloat(),
-            p2Y = (data.p2Y as Number).toFloat(),
-            p2Angle = (data.p2Angle as Number).toFloat(),
-            p2AngVel = (data.p2AngVel as Number).toFloat(),
-            p2Dead = data.p2Dead as Boolean,
-        )
-    }
 
     @Suppress("UNCHECKED_CAST_TO_EXTERNAL_INTERFACE")
     private fun parseFloatArray(arr: dynamic): List<Float> {

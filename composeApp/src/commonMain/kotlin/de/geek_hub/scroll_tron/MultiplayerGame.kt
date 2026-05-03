@@ -46,9 +46,14 @@ import kotlin.math.sin
 // Neon palette for two players
 // ---------------------------------------------------------------------------
 
-private val PLAYER1_COLOR = Color(0xFF00FFFF)  // Cyan (host)
-private val PLAYER2_COLOR = Color(0xFFFF00FF)  // Pink (guest)
-private val NEON_LIME     = Color(0xFF39FF14)
+private val PLAYER_COLORS = listOf(
+    Color(0xFF00FFFF),  // P1: Cyan (host)
+    Color(0xFFFF00FF),  // P2: Pink
+    Color(0xFF39FF14),  // P3: Lime
+    Color(0xFFFFFF00),  // P4: Yellow
+)
+private val PLAYER_COLOR_NAMES = listOf("CYAN", "PINK", "LIME", "YELLOW")
+private val NEON_LIME = Color(0xFF39FF14)
 
 // ---------------------------------------------------------------------------
 // Collision helpers (same as singleplayer)
@@ -97,34 +102,34 @@ private fun segmentsIntersect(
 const val GAME_WIDTH = 3200f
 const val GAME_HEIGHT = 1800f
 
-private fun mpInitialState(): MultiplayerGameState {
+private fun mpInitialState(numPlayers: Int): MultiplayerGameState {
     val gridStep = 60f
     val w = GAME_WIDTH
     val h = GAME_HEIGHT
 
-    // Player 1 starts on the left quarter, heading right
-    val p1x = kotlin.math.round(w * 0.25f / gridStep) * gridStep
-    val p1y = kotlin.math.round(h * 0.5f  / gridStep) * gridStep
+    val startPositions = listOf(
+        Point(w * 0.25f, h * 0.5f) to 0f,                           // P1: left quarter, right
+        Point(w * 0.75f, h * 0.5f) to kotlin.math.PI.toFloat(),    // P2: right quarter, left
+        Point(w * 0.5f, h * 0.25f) to (kotlin.math.PI / 2).toFloat(), // P3: top quarter, down
+        Point(w * 0.5f, h * 0.75f) to (-kotlin.math.PI / 2).toFloat(), // P4: bottom quarter, up
+    )
 
-    // Player 2 starts on the right quarter, heading left
-    val p2x = kotlin.math.round(w * 0.75f / gridStep) * gridStep
-    val p2y = kotlin.math.round(h * 0.5f  / gridStep) * gridStep
+    val players = (0 until numPlayers).map { i ->
+        val (pos, angle) = startPositions[i]
+        GameState(
+            position = Point(
+                kotlin.math.round(pos.x / gridStep) * gridStep,
+                kotlin.math.round(pos.y / gridStep) * gridStep
+            ),
+            angle = angle,
+            angularVelocity = 0f,
+            trail = mutableListOf(),
+            isDead = false
+        )
+    }
 
     return MultiplayerGameState(
-        player1 = GameState(
-            position = Point(p1x, p1y),
-            angle = 0f,          // heading right →
-            angularVelocity = 0f,
-            trail = mutableListOf(),
-            isDead = false,
-        ),
-        player2 = GameState(
-            position = Point(p2x, p2y),
-            angle = kotlin.math.PI.toFloat(),  // heading left ←
-            angularVelocity = 0f,
-            trail = mutableListOf(),
-            isDead = false,
-        ),
+        players = players,
         winner = null,
     )
 }
@@ -135,7 +140,7 @@ private fun mpInitialState(): MultiplayerGameState {
 
 private fun stepPlayer(
     state: GameState,
-    opponentTrail: List<LineSegment>,
+    allTrails: List<List<LineSegment>>,
 ): GameState {
     if (state.isDead) return state
 
@@ -165,21 +170,24 @@ private fun stepPlayer(
         }
     }
 
-    // Cross-player collision (hit opponent's trail)
+    // Cross-player collision (hit any trail)
     var crossHit = false
-    for (i in 0 until opponentTrail.size) {
-        val seg = opponentTrail[i]
-        if (segmentsIntersect(newSegment.start, newSegment.end, seg.start, seg.end)) {
-            crossHit = true
-            break
+    for (trail in allTrails) {
+        if (trail === state.trail) continue // skip own trail (handled by self-collision)
+        for (i in 0 until trail.size) {
+            val seg = trail[i]
+            if (segmentsIntersect(newSegment.start, newSegment.end, seg.start, seg.end)) {
+                crossHit = true
+                break
+            }
         }
+        if (crossHit) break
     }
 
     return state.copy(
         position = newPos,
         angle = newAngle,
         angularVelocity = newAngVel,
-        // trail reference stays the same
         isDead = wallHit || selfHit || crossHit,
     )
 }
@@ -213,8 +221,7 @@ private fun stepMultiplayerPredicted(
 ): MultiplayerGameState {
     if (state.winner != null) return state
     return MultiplayerGameState(
-        player1 = stepPredicted(state.player1),
-        player2 = stepPredicted(state.player2),
+        players = state.players.map { stepPredicted(it) },
         winner = null,
     )
 }
@@ -228,20 +235,19 @@ private fun stepMultiplayer(
 ): MultiplayerGameState {
     if (state.winner != null) return state
 
-    val newP1 = stepPlayer(state.player1, state.player2.trail)
-    val newP2 = stepPlayer(state.player2, state.player1.trail)
+    val allTrails = state.players.map { it.trail }
+    val newPlayers = state.players.map { stepPlayer(it, allTrails) }
 
     // Determine winner
+    val aliveIndices = newPlayers.indices.filter { !newPlayers[it].isDead }
     val winner = when {
-        newP1.isDead && newP2.isDead -> PlayerId.Player1  // simultaneous death → Player 1 wins (host advantage)
-        newP1.isDead -> PlayerId.Player2
-        newP2.isDead -> PlayerId.Player1
+        aliveIndices.size == 1 -> PlayerId.entries[aliveIndices[0]]
+        aliveIndices.size == 0 -> state.winner ?: PlayerId.Player1 // Tie -> fallback to previous or P1
         else -> null
     }
 
     return MultiplayerGameState(
-        player1 = newP1,
-        player2 = newP2,
+        players = newPlayers,
         winner = winner,
     )
 }
@@ -323,55 +329,45 @@ private fun DrawScope.drawHead(pos: Point, angleDeg: Float, trailColor: Color) {
 
 private fun stateToSyncData(state: MultiplayerGameState): GameSyncData {
     return GameSyncData(
-        p1X = state.player1.position.x, p1Y = state.player1.position.y,
-        p1Angle = state.player1.angle, p1AngVel = state.player1.angularVelocity,
-        p1Dead = state.player1.isDead,
-        p2X = state.player2.position.x, p2Y = state.player2.position.y,
-        p2Angle = state.player2.angle, p2AngVel = state.player2.angularVelocity,
-        p2Dead = state.player2.isDead,
+        players = state.players.map { p ->
+            PlayerSyncData(
+                x = p.position.x,
+                y = p.position.y,
+                angle = p.angle,
+                angVel = p.angularVelocity,
+                isDead = p.isDead
+            )
+        }
     )
 }
 
 private fun MultiplayerGameState.applySyncData(data: GameSyncData): MultiplayerGameState {
-    val newWinner = winner ?: when {
-        data.p1Dead && data.p2Dead -> PlayerId.Player1
-        data.p1Dead -> PlayerId.Player2
-        data.p2Dead -> PlayerId.Player1
+    val newPlayers = players.mapIndexed { i, player ->
+        val pData = data.players.getOrNull(i) ?: return@mapIndexed player
+        
+        val newPos = Point(pData.x, pData.y)
+        if (player.trail.isNotEmpty() && !pData.isDead) {
+            val lastSeg = player.trail.last()
+            player.trail[player.trail.lastIndex] = LineSegment(lastSeg.start, newPos)
+        }
+        
+        player.copy(
+            position = newPos,
+            angle = pData.angle,
+            angularVelocity = pData.angVel,
+            isDead = pData.isDead
+        )
+    }
+
+    val aliveIndices = newPlayers.indices.filter { !newPlayers[it].isDead }
+    val newWinner = when {
+        aliveIndices.size == 1 && newPlayers.size > 1 -> PlayerId.entries[aliveIndices[0]]
         else -> null
     }
-    
-    val newP1Pos = Point(data.p1X, data.p1Y)
-    // Replace last predicted segment with correction to authoritative position
-    if (player1.trail.isNotEmpty() && !data.p1Dead) {
-        val lastSeg = player1.trail.last()
-        player1.trail[player1.trail.lastIndex] = LineSegment(lastSeg.start, newP1Pos)
-    }
-    val p1Trail = player1.trail
-
-    val newP2Pos = Point(data.p2X, data.p2Y)
-    // Replace last predicted segment with correction to authoritative position
-    if (player2.trail.isNotEmpty() && !data.p2Dead) {
-        val lastSeg = player2.trail.last()
-        player2.trail[player2.trail.lastIndex] = LineSegment(lastSeg.start, newP2Pos)
-    }
-    val p2Trail = player2.trail
 
     return MultiplayerGameState(
-        player1 = GameState(
-            position = newP1Pos,
-            angle = data.p1Angle,
-            angularVelocity = data.p1AngVel,
-            trail = p1Trail,
-            isDead = data.p1Dead,
-        ),
-        player2 = GameState(
-            position = newP2Pos,
-            angle = data.p2Angle,
-            angularVelocity = data.p2AngVel,
-            trail = p2Trail,
-            isDead = data.p2Dead,
-        ),
-        winner = newWinner,
+        players = newPlayers,
+        winner = newWinner
     )
 }
 
@@ -386,10 +382,10 @@ fun MultiplayerGame(
     isHost: Boolean,
     onBack: () -> Unit,
 ) {
-    var mpState by remember { mutableStateOf(mpInitialState()) }
+    var myPlayerIndex by remember { mutableStateOf(if (isHost) 0 else -1) }
+    var mpState by remember { mutableStateOf(mpInitialState(1)) } // Start with 1, will reset
+    var readyPlayers by remember { mutableStateOf(setOf<Int>()) }
     var gameStarted by remember { mutableStateOf(false) }
-    var rematchRequested by remember { mutableStateOf(false) }
-    var opponentRematch  by remember { mutableStateOf(false) }
     var isLeaving by remember { mutableStateOf(false) }
     var connectionLost by remember { mutableStateOf(false) }
 
@@ -404,9 +400,9 @@ fun MultiplayerGame(
         Font(Res.font.orbitron_bold, FontWeight.Bold),
     )
 
-    // Host starts immediately, guest waits for GAME_START message
     LaunchedEffect(Unit) {
         if (isHost) {
+            mpState = mpInitialState(connector.connectedPlayers)
             connector.sendGameStart(GAME_WIDTH, GAME_HEIGHT)
             gameStarted = true
         }
@@ -420,28 +416,48 @@ fun MultiplayerGame(
             }
         }
 
-        connector.onGameStartReceived { _, _ ->
+        connector.onGameStartReceived { _, _, playerIndex ->
             if (!isHost) {
                 // Guest received start signal from host
-                mpState = mpInitialState()
+                myPlayerIndex = playerIndex
+                // Reset local state. By clearing players, we force the next GameSync to re-initialize them with empty trails.
+                readyPlayers = emptySet()
+                mpState = mpState.copy(winner = null, players = emptyList())
                 gameStarted = true
             }
         }
 
-        connector.onPlayerInputReceived { angVel ->
+        connector.onPlayerInputReceived { playerIndex, angVel ->
             if (isHost) {
-                // Host received steering input from guest → apply to player2
-                val p2 = mpState.player2
-                mpState = mpState.copy(
-                    player2 = p2.copy(angularVelocity = p2.angularVelocity + angVel)
-                )
+                // Host received steering input from guest
+                val players = mpState.players.toMutableList()
+                if (playerIndex in players.indices) {
+                    val p = players[playerIndex]
+                    players[playerIndex] = p.copy(angularVelocity = p.angularVelocity + angVel)
+                    mpState = mpState.copy(players = players)
+                }
             }
         }
 
         connector.onGameSyncReceived { syncData ->
             if (!isHost) {
-                // Guest received authoritative state from host, append trail locally
+                // Guest received authoritative state from host
+                if (mpState.players.size != syncData.players.size) {
+                    // Initialize player list with correct size
+                    mpState = mpState.copy(
+                        players = syncData.players.map { p ->
+                            GameState(
+                                position = Point(p.x, p.y),
+                                angle = p.angle,
+                                angularVelocity = p.angVel,
+                                trail = mutableListOf(),
+                                isDead = p.isDead
+                            )
+                        }
+                    )
+                }
                 mpState = mpState.applySyncData(syncData)
+                gameStarted = true // Start game once we have state
             }
         }
 
@@ -449,16 +465,13 @@ fun MultiplayerGame(
             // Game over handled by state (mpState.winner)
         }
 
-        connector.onRematchReceived {
-            opponentRematch = true
-            if (rematchRequested) {
-                // Both want rematch — restart
-                mpState = mpInitialState()
-                rematchRequested = false
-                opponentRematch = false
-                if (isHost) {
-                    connector.sendGameStart(GAME_WIDTH, GAME_HEIGHT)
-                }
+        connector.onRematchReceived { playerIndex ->
+            readyPlayers = readyPlayers + playerIndex
+            if (isHost && readyPlayers.size == mpState.players.size) {
+                // Everyone is ready, start!
+                mpState = mpInitialState(mpState.players.size)
+                readyPlayers = emptySet()
+                connector.sendGameStart(GAME_WIDTH, GAME_HEIGHT)
             }
         }
     }
@@ -486,7 +499,7 @@ fun MultiplayerGame(
 
                         // Notify game over
                         if (mpState.winner != null) {
-                            connector.sendGameOver(if (mpState.winner == PlayerId.Player1) 1 else 2)
+                            connector.sendGameOver(mpState.winner!!.ordinal)
                         }
                     } else {
                         // Guest: predict locally for smooth rendering
@@ -498,13 +511,13 @@ fun MultiplayerGame(
     }
 
     val doRematch: () -> Unit = {
-        rematchRequested = true
-        connector.sendRematch()
-        if (opponentRematch) {
-            mpState = mpInitialState()
-            rematchRequested = false
-            opponentRematch = false
-            if (isHost) {
+        if (!readyPlayers.contains(myPlayerIndex)) {
+            readyPlayers = readyPlayers + myPlayerIndex
+            connector.sendRematch()
+            if (isHost && readyPlayers.size == mpState.players.size) {
+                // Everyone is ready, start!
+                mpState = mpInitialState(mpState.players.size)
+                readyPlayers = emptySet()
                 connector.sendGameStart(GAME_WIDTH, GAME_HEIGHT)
             }
         }
@@ -536,20 +549,20 @@ fun MultiplayerGame(
                     val sign = if (delta > 0f) 1f else -1f
                     val impulse = sign * STEERING_SENSITIVITY
                     if (isHost) {
-                        // Host controls player1 directly
-                        val p1 = mpState.player1
-                        mpState = mpState.copy(
-                            player1 = p1.copy(angularVelocity = p1.angularVelocity + impulse)
-                        )
+                        // Host controls player 0 directly
+                        val players = mpState.players.toMutableList()
+                        val p0 = players[0]
+                        players[0] = p0.copy(angularVelocity = p0.angularVelocity + impulse)
+                        mpState = mpState.copy(players = players)
                     } else {
                         // Guest sends input to host
-                        connector.sendPlayerInput(impulse)
+                        connector.sendPlayerInput(myPlayerIndex, impulse)
                     }
                 }
             },
     ) {
         // My player index
-        val myPlayerId = if (isHost) PlayerId.Player1 else PlayerId.Player2
+        val myPlayerId = if (myPlayerIndex != -1) PlayerId.entries[myPlayerIndex] else null
 
         Box(
             modifier = Modifier.fillMaxSize(),
@@ -569,56 +582,46 @@ fun MultiplayerGame(
                         drawBorder()
 
                 if (gameStarted) {
-                    // Player 1 (host) trail & head
-                    drawTrail(mpState.player1.trail, PLAYER1_COLOR)
-                    if (!mpState.player1.isDead) {
-                        val a1 = (mpState.player1.angle * (180.0 / kotlin.math.PI)).toFloat()
-                        drawHead(mpState.player1.position, a1, PLAYER1_COLOR)
-                    }
-
-                    // Player 2 (guest) trail & head
-                    drawTrail(mpState.player2.trail, PLAYER2_COLOR)
-                    if (!mpState.player2.isDead) {
-                        val a2 = (mpState.player2.angle * (180.0 / kotlin.math.PI)).toFloat()
-                        drawHead(mpState.player2.position, a2, PLAYER2_COLOR)
+                    mpState.players.forEachIndexed { i, player ->
+                        val color = PLAYER_COLORS[i % PLAYER_COLORS.size]
+                        drawTrail(player.trail, color)
+                        if (!player.isDead) {
+                            val angleDeg = (player.angle * (180.0 / kotlin.math.PI)).toFloat()
+                            drawHead(player.position, angleDeg, color)
+                        }
                     }
 
                     // Player labels HUD (top-left)
-                    val myColor = if (isHost) PLAYER1_COLOR else PLAYER2_COLOR
-                    val myLabel = if (isHost) "YOU (P1)" else "YOU (P2)"
-                    val oppLabel = if (isHost) "OPPONENT (P2)" else "OPPONENT (P1)"
-                    val oppColor = if (isHost) PLAYER2_COLOR else PLAYER1_COLOR
-
                     val pad = 40f
                     val topInset = 120f
+                    var currentY = pad + topInset
 
-                    val myMeasured = textMeasurer.measure(
-                        myLabel,
-                        TextStyle(
+                    mpState.players.forEachIndexed { i, player ->
+                        val isMe = i == myPlayerIndex
+                        val colorName = PLAYER_COLOR_NAMES.getOrNull(i) ?: "P${i+1}"
+                        val label = if (isMe) "$colorName (YOU)" else colorName
+                        val color = PLAYER_COLORS[i % PLAYER_COLORS.size]
+                        val style = TextStyle(
                             fontSize = 30.sp,
-                            fontWeight = FontWeight.Bold,
-                            fontFamily = FontFamily.Monospace,
-                            color = myColor,
-                        ),
-                    )
-                    val oppMeasured = textMeasurer.measure(
-                        oppLabel,
-                        TextStyle(
-                            fontSize = 30.sp,
-                            fontFamily = FontFamily.Monospace,
-                            color = oppColor,
-                        ),
-                    )
-                    drawText(myMeasured, topLeft = Offset(pad, pad + topInset))
-                    drawText(oppMeasured, topLeft = Offset(pad, pad + topInset + myMeasured.size.height + 10f))
+                            fontWeight = if (isMe) FontWeight.Bold else FontWeight.Normal,
+                            fontFamily = gameFont,
+                            color = if (player.isDead) color.copy(alpha = 0.3f) else color,
+                        )
+                        val measured = textMeasurer.measure(label, style)
+                        drawText(measured, topLeft = Offset(pad, currentY))
+                        currentY += measured.size.height + 10f
+                    }
 
                     // Game over or Connection Lost overlay
                     if (mpState.winner != null || connectionLost) {
                         drawRect(Color(0xCC000000), size = Size(GAME_WIDTH, GAME_HEIGHT))
 
-                        val title = if (connectionLost) "CONNECTION LOST"
-                                    else if (mpState.winner == myPlayerId) "YOU WIN"
-                                    else "YOU LOSE"
+                        val title = when {
+                            connectionLost -> "CONNECTION LOST"
+                            mpState.winner == myPlayerId -> "YOU WIN"
+                            mpState.winner != null -> "${PLAYER_COLOR_NAMES.getOrNull(mpState.winner!!.ordinal) ?: "OPPONENT"} WINS"
+                            else -> "GAME OVER"
+                        }
                         val titleColor = if (connectionLost) Color(0xFFFFCC00)
                                          else if (mpState.winner == myPlayerId) NEON_LIME
                                          else Color(0xFFFF3333)
@@ -649,7 +652,7 @@ fun MultiplayerGame(
                             fontSize = 45.sp,
                             fontWeight = FontWeight.Bold,
                             fontFamily = gameFont,
-                            color = PLAYER1_COLOR,
+                            color = PLAYER_COLORS[0],
                         ),
                     )
                     drawText(
@@ -678,31 +681,28 @@ fun MultiplayerGame(
                     ) {
                         // Rematch button (only if not disconnected)
                         if (!connectionLost) {
-                            val rematchColor = if (rematchRequested && !opponentRematch)
-                            Color(0xFF666666) else NEON_LIME
-                        val rematchText = when {
-                            rematchRequested && !opponentRematch -> "WAITING..."
-                            else -> "REMATCH"
-                        }
-                        Box(
-                            modifier = Modifier
-                                .border(
-                                    width = 1.dp,
+                            val isReady = readyPlayers.contains(myPlayerIndex)
+                            val rematchColor = if (isReady) Color(0xFFAAAAAA) else NEON_LIME
+                            val rematchText = if (isReady) "WAITING (${readyPlayers.size}/${mpState.players.size})" else "REMATCH"
+                            Box(
+                                modifier = Modifier
+                                    .border(
+                                        width = 1.dp,
+                                        color = rematchColor,
+                                        shape = RoundedCornerShape(4.dp),
+                                    )
+                                    .clickable(enabled = !isReady) { doRematch() }
+                                    .padding(horizontal = 24.dp, vertical = 12.dp),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                Text(
+                                    text = rematchText,
+                                    fontFamily = gameFont,
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 16.sp,
                                     color = rematchColor,
-                                    shape = RoundedCornerShape(4.dp),
                                 )
-                                .let { if (!rematchRequested) it.clickable { doRematch() } else it }
-                                .padding(horizontal = 24.dp, vertical = 12.dp),
-                            contentAlignment = Alignment.Center,
-                        ) {
-                            Text(
-                                text = rematchText,
-                                fontFamily = gameFont,
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 16.sp,
-                                color = rematchColor,
-                            )
-                        }
+                            }
                         }
 
                         // Back to menu
@@ -710,16 +710,10 @@ fun MultiplayerGame(
                             modifier = Modifier
                                 .border(
                                     width = 1.dp,
-                                    color = Color(0xFF666666),
+                                    color = Color(0xFFAAAAAA),
                                     shape = RoundedCornerShape(4.dp),
                                 )
-                                .clickable {
-                                    if (!isLeaving) {
-                                        isLeaving = true
-                                        connector.disconnect()
-                                        onBack()
-                                    }
-                                }
+                                .clickable { onBack() }
                                 .padding(horizontal = 24.dp, vertical = 12.dp),
                             contentAlignment = Alignment.Center,
                         ) {
@@ -728,7 +722,7 @@ fun MultiplayerGame(
                                 fontFamily = gameFont,
                                 fontWeight = FontWeight.Bold,
                                 fontSize = 16.sp,
-                                color = Color(0xFF666666),
+                                color = Color(0xFFAAAAAA),
                             )
                         }
                     }

@@ -39,7 +39,7 @@ private val NEON_PINK   = Color(0xFFFF00FF)
 private val NEON_LIME   = Color(0xFF39FF14)
 private val GRID_COLOR  = Color(0xFF0D2A0D)
 private val BG_COLOR    = Color(0xFF020C02)
-private val DIM_TEXT    = Color(0xFF666666)
+private val DIM_TEXT    = Color(0xFFAAAAAA)
 
 // ---------------------------------------------------------------------------
 // Multiplayer Lobby
@@ -85,10 +85,10 @@ fun MultiplayerLobby(
         }
     }
 
-    // Auto-transition to game when connected
+    // Auto-transition to game when connected (GUEST ONLY)
     LaunchedEffect(connState) {
-        if (connState == LobbyConnectionState.Connected) {
-            onGameReady(connector, lobbyMode == LobbyMode.Host)
+        if (connState == LobbyConnectionState.Connected && lobbyMode == LobbyMode.Join) {
+            onGameReady(connector, false)
         }
     }
 
@@ -216,11 +216,49 @@ fun MultiplayerLobby(
                     // Animated waiting indicator
                     val dots = ".".repeat(((frameCount * 0.5f).toInt() % 4))
                     Text(
-                        text = "WAITING FOR PLAYER$dots",
+                        text = "PLAYERS CONNECTED: ${connector.connectedPlayers}/4$dots",
                         fontFamily = gameFont,
                         fontSize = 14.sp,
                         color = NEON_CYAN,
                     )
+
+                    Spacer(modifier = Modifier.height(24.dp))
+
+                    // Player slots
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        for (i in 0 until 4) {
+                            val isConnected = i < connector.connectedPlayers
+                            val color = if (isConnected) PLAYER_COLORS[i] else DIM_TEXT
+                            Box(
+                                modifier = Modifier
+                                    .size(60.dp)
+                                    .border(1.dp, color, RoundedCornerShape(4.dp)),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = "P${i + 1}",
+                                    fontFamily = gameFont,
+                                    fontSize = 12.sp,
+                                    color = color
+                                )
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(32.dp))
+
+                    if (connector.connectedPlayers >= 2) {
+                        LobbyButton("START GAME", NEON_LIME, gameFont) {
+                            onGameReady(connector, true)
+                        }
+                    } else {
+                        Text(
+                            text = "NEED AT LEAST 2 PLAYERS",
+                            fontFamily = gameFont,
+                            fontSize = 12.sp,
+                            color = DIM_TEXT,
+                        )
+                    }
                 }
 
                 // Join: enter code
@@ -316,13 +354,22 @@ fun MultiplayerLobby(
             Spacer(modifier = Modifier.height(48.dp))
 
             // Back button
-            LobbyButton("BACK", DIM_TEXT, gameFont) {
-                connector.disconnect()
-                onBack()
+            if (connState != LobbyConnectionState.Connected || lobbyMode == LobbyMode.Host) {
+                LobbyButton("BACK", DIM_TEXT, gameFont) {
+                    connector.disconnect()
+                    onBack()
+                }
             }
         }
     }
 }
+
+private val PLAYER_COLORS = listOf(
+    Color(0xFF00FFFF),  // Cyan
+    Color(0xFFFF00FF),  // Pink
+    Color(0xFF39FF14),  // Lime
+    Color(0xFFFFFF00),  // Yellow
+)
 
 // ---------------------------------------------------------------------------
 // Internal

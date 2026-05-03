@@ -20,11 +20,10 @@ data class GameState(
 // Multiplayer models
 // ---------------------------------------------------------------------------
 
-enum class PlayerId { Player1, Player2 }
+enum class PlayerId { Player1, Player2, Player3, Player4 }
 
 data class MultiplayerGameState(
-    val player1: GameState,
-    val player2: GameState,
+    val players: List<GameState>,
     val winner: PlayerId? = null,    // set when one player survives
 )
 

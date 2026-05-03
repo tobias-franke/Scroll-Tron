@@ -46,7 +46,11 @@ class NetworkManager {
         private set
 
     private var peer: JsPeer? = null
-    private var connection: JsDataConnection? = null
+    private val connections = mutableMapOf<Int, JsDataConnection>() // Player index -> Connection
+    private var hostConnection: JsDataConnection? = null // For guests: connection to host
+
+    val numConnections: Int
+        get() = connections.size
 
     // Callbacks set by the lobby/game composables
     var onStateChanged: ((ConnectionState) -> Unit)? = null
@@ -76,8 +80,14 @@ class NetworkManager {
 
         peer!!.on("connection") { conn ->
             val dataConn = conn.unsafeCast<JsDataConnection>()
-            connection = dataConn
-            setupDataConnection(dataConn)
+            if (connections.size >= 3) {
+                console.log("Maximum 4 players reached, rejecting connection from ${dataConn.peer}")
+                dataConn.close()
+                return@on
+            }
+            val playerIndex = connections.size + 1
+            connections[playerIndex] = dataConn
+            setupDataConnection(dataConn, playerIndex)
         }
 
         peer!!.on("error") { err ->
@@ -108,8 +118,8 @@ class NetworkManager {
         peer!!.on("open") { _ ->
             console.log("Guest peer open, connecting to host: $peerId")
             val conn = peer!!.connect(peerId)
-            connection = conn
-            setupDataConnection(conn)
+            hostConnection = conn
+            setupDataConnection(conn, -1) // playerIndex -1 means we are a guest
         }
 
         peer!!.on("error") { err ->
@@ -124,24 +134,40 @@ class NetworkManager {
     // Data channel setup
     // -----------------------------------------------------------------------
 
-    private fun setupDataConnection(conn: JsDataConnection) {
+    private fun setupDataConnection(conn: JsDataConnection, playerIndex: Int) {
         conn.on("open") { _ ->
-            console.log("Data channel open with peer: ${conn.peer}")
+            console.log("Data channel open with peer: ${conn.peer} (Player $playerIndex)")
             updateState(ConnectionState.Connected)
         }
 
         conn.on("data") { data ->
             val type = data.type?.toString() ?: return@on
+            
+            // If we are host and received input, we need to know which player it is
+            if (playerIndex != -1) {
+                data.playerIndex = playerIndex
+                
+                // Host broadcasts rematch requests to all other guests
+                if (type == MessageType.REMATCH) {
+                    connections.values.forEach { it.send(data) }
+                }
+            }
+
             onMessageReceived?.invoke(type, data)
         }
 
         conn.on("close") { _ ->
-            console.log("Data channel closed")
-            updateState(ConnectionState.Idle)
+            console.log("Data channel closed for Player $playerIndex")
+            if (playerIndex != -1) {
+                connections.remove(playerIndex)
+                if (connections.isEmpty()) updateState(ConnectionState.WaitingForGuest)
+            } else {
+                updateState(ConnectionState.Idle)
+            }
         }
 
         conn.on("error") { err ->
-            console.log("Data channel error: $err")
+            console.log("Data channel error (Player $playerIndex): $err")
             errorMessage = "Data channel error: $err"
             updateState(ConnectionState.Error)
         }
@@ -152,34 +178,48 @@ class NetworkManager {
     // -----------------------------------------------------------------------
 
     fun send(message: dynamic) {
-        connection?.send(message)
+        if (hostConnection != null) {
+            hostConnection?.send(message)
+        } else {
+            // Broadcast to all guests
+            connections.values.forEach { it.send(message) }
+        }
     }
 
-    fun sendPlayerInput(angularVelocity: Float) {
+    fun sendPlayerInput(playerIndex: Int, angularVelocity: Float) {
         val msg = js("{}")
         msg.type = MessageType.PLAYER_INPUT
+        msg.playerIndex = playerIndex
         msg.angularVelocity = angularVelocity
         send(msg)
     }
 
-    fun sendGameSync(
-        p1X: Float, p1Y: Float, p1Angle: Float, p1AngVel: Float, p1Dead: Boolean,
-        p2X: Float, p2Y: Float, p2Angle: Float, p2AngVel: Float, p2Dead: Boolean,
-    ) {
+    fun sendGameSync(players: List<PlayerSyncData>) {
         val msg = js("{}")
         msg.type = MessageType.GAME_SYNC
-        msg.p1X = p1X; msg.p1Y = p1Y; msg.p1Angle = p1Angle; msg.p1AngVel = p1AngVel; msg.p1Dead = p1Dead
-        msg.p2X = p2X; msg.p2Y = p2Y; msg.p2Angle = p2Angle; msg.p2AngVel = p2AngVel; msg.p2Dead = p2Dead
+        msg.players = players.map { p ->
+            val pObj = js("{}")
+            pObj.x = p.x
+            pObj.y = p.y
+            pObj.angle = p.angle
+            pObj.angVel = p.angVel
+            pObj.isDead = p.isDead
+            pObj
+        }.toTypedArray()
         msg.timestamp = window.performance.now()
         send(msg)
     }
 
     fun sendGameStart(canvasWidth: Float, canvasHeight: Float) {
-        val msg = js("{}")
-        msg.type = MessageType.GAME_START
-        msg.canvasWidth = canvasWidth
-        msg.canvasHeight = canvasHeight
-        send(msg)
+        // Host sends to each guest their player index
+        connections.forEach { (index, conn) ->
+            val msg = js("{}")
+            msg.type = MessageType.GAME_START
+            msg.canvasWidth = canvasWidth
+            msg.canvasHeight = canvasHeight
+            msg.playerIndex = index
+            conn.send(msg)
+        }
     }
 
     fun sendGameOver(winnerId: Int) {
@@ -200,8 +240,10 @@ class NetworkManager {
     // -----------------------------------------------------------------------
 
     fun disconnect() {
-        connection?.close()
-        connection = null
+        hostConnection?.close()
+        hostConnection = null
+        connections.values.toList().forEach { it.close() }
+        connections.clear()
         peer?.destroy()
         peer = null
         updateState(ConnectionState.Idle)
