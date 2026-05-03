@@ -7,6 +7,9 @@ package de.geek_hub.scroll_tron
 
 actual fun createMultiplayerConnector(): MultiplayerConnector = WasmJsMultiplayerConnector()
 
+@JsFun("function(obj, key) { return obj[key]; }")
+internal external fun getJsArray(obj: JsAny, key: String): JsAny
+
 class WasmJsMultiplayerConnector : MultiplayerConnector() {
 
     private val network = WasmJsNetworkManager()
@@ -20,12 +23,15 @@ class WasmJsMultiplayerConnector : MultiplayerConnector() {
     override var roomCode: String = ""
         private set
 
+    override val connectedPlayers: Int
+        get() = if (network.isGuest) 2 else network.numConnections + 1
+
     private var stateCallback: ((LobbyConnectionState) -> Unit)? = null
-    private var gameStartCallback: ((Float, Float) -> Unit)? = null
-    private var playerInputCallback: ((Float) -> Unit)? = null
+    private var gameStartCallback: ((Float, Float, Int) -> Unit)? = null
+    private var playerInputCallback: ((Int, Float) -> Unit)? = null
     private var gameSyncCallback: ((GameSyncData) -> Unit)? = null
     private var gameOverCallback: ((Int) -> Unit)? = null
-    private var rematchCallback: (() -> Unit)? = null
+    private var rematchCallback: ((Int) -> Unit)? = null
 
     init {
         network.onStateChanged = { connState ->
@@ -45,33 +51,39 @@ class WasmJsMultiplayerConnector : MultiplayerConnector() {
                 MessageType.GAME_START -> {
                     val w = getJsFloat(dataAny, "canvasWidth")
                     val h = getJsFloat(dataAny, "canvasHeight")
-                    gameStartCallback?.invoke(w, h)
+                    val idx = getJsInt(dataAny, "playerIndex")
+                    gameStartCallback?.invoke(w, h, idx)
                 }
                 MessageType.PLAYER_INPUT -> {
+                    val idx = getJsInt(dataAny, "playerIndex")
                     val angVel = getJsFloat(dataAny, "angularVelocity")
-                    playerInputCallback?.invoke(angVel)
+                    playerInputCallback?.invoke(idx, angVel)
                 }
                 MessageType.GAME_SYNC -> {
-                    val syncData = GameSyncData(
-                        p1X = getJsFloat(dataAny, "p1X"),
-                        p1Y = getJsFloat(dataAny, "p1Y"),
-                        p1Angle = getJsFloat(dataAny, "p1Angle"),
-                        p1AngVel = getJsFloat(dataAny, "p1AngVel"),
-                        p1Dead = getJsBoolean(dataAny, "p1Dead"),
-                        p2X = getJsFloat(dataAny, "p2X"),
-                        p2Y = getJsFloat(dataAny, "p2Y"),
-                        p2Angle = getJsFloat(dataAny, "p2Angle"),
-                        p2AngVel = getJsFloat(dataAny, "p2AngVel"),
-                        p2Dead = getJsBoolean(dataAny, "p2Dead"),
-                    )
-                    gameSyncCallback?.invoke(syncData)
+                    val playersArr = getJsArray(dataAny, "players")
+                    val len = getJsArrayLength(playersArr)
+                    val players = mutableListOf<PlayerSyncData>()
+                    for (i in 0 until len) {
+                        val pObj = getJsArrayItem(playersArr, i)
+                        players.add(
+                            PlayerSyncData(
+                                x = getJsFloat(pObj, "x"),
+                                y = getJsFloat(pObj, "y"),
+                                angle = getJsFloat(pObj, "angle"),
+                                angVel = getJsFloat(pObj, "angVel"),
+                                isDead = getJsBoolean(pObj, "isDead")
+                            )
+                        )
+                    }
+                    gameSyncCallback?.invoke(GameSyncData(players))
                 }
                 MessageType.GAME_OVER -> {
                     val winner = getJsInt(dataAny, "winner")
                     gameOverCallback?.invoke(winner)
                 }
                 MessageType.REMATCH -> {
-                    rematchCallback?.invoke()
+                    val idx = if (getJsBoolean(dataAny, "hasPlayerIndex")) getJsInt(dataAny, "playerIndex") else 0
+                    rematchCallback?.invoke(idx)
                 }
             }
         }
@@ -98,11 +110,11 @@ class WasmJsMultiplayerConnector : MultiplayerConnector() {
         stateCallback = callback
     }
 
-    override fun onGameStartReceived(callback: (canvasWidth: Float, canvasHeight: Float) -> Unit) {
+    override fun onGameStartReceived(callback: (canvasWidth: Float, canvasHeight: Float, playerIndex: Int) -> Unit) {
         gameStartCallback = callback
     }
 
-    override fun onPlayerInputReceived(callback: (angularVelocity: Float) -> Unit) {
+    override fun onPlayerInputReceived(callback: (playerIndex: Int, angularVelocity: Float) -> Unit) {
         playerInputCallback = callback
     }
 
@@ -114,7 +126,7 @@ class WasmJsMultiplayerConnector : MultiplayerConnector() {
         gameOverCallback = callback
     }
 
-    override fun onRematchReceived(callback: () -> Unit) {
+    override fun onRematchReceived(callback: (playerIndex: Int) -> Unit) {
         rematchCallback = callback
     }
 
@@ -126,15 +138,12 @@ class WasmJsMultiplayerConnector : MultiplayerConnector() {
         network.sendGameStart(canvasWidth, canvasHeight)
     }
 
-    override fun sendPlayerInput(angularVelocity: Float) {
-        network.sendPlayerInput(angularVelocity)
+    override fun sendPlayerInput(playerIndex: Int, angularVelocity: Float) {
+        network.sendPlayerInput(playerIndex, angularVelocity)
     }
 
     override fun sendGameSync(data: GameSyncData) {
-        network.sendGameSync(
-            p1X = data.p1X, p1Y = data.p1Y, p1Angle = data.p1Angle, p1AngVel = data.p1AngVel, p1Dead = data.p1Dead,
-            p2X = data.p2X, p2Y = data.p2Y, p2Angle = data.p2Angle, p2AngVel = data.p2AngVel, p2Dead = data.p2Dead
-        )
+        network.sendGameSync(data.players)
     }
 
     override fun sendGameOver(winnerIndex: Int) {

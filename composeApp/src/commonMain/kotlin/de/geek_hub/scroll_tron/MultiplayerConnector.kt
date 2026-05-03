@@ -25,6 +25,7 @@ abstract class MultiplayerConnector {
     abstract val state: LobbyConnectionState
     abstract val errorMessage: String?
     abstract val roomCode: String
+    abstract val connectedPlayers: Int
 
     /** Host a new game — generates a room code. */
     abstract fun hostGame()
@@ -42,27 +43,35 @@ abstract class MultiplayerConnector {
     // Game message callbacks (set by the game composable)
     // -----------------------------------------------------------------------
 
-    abstract fun onGameStartReceived(callback: (canvasWidth: Float, canvasHeight: Float) -> Unit)
-    abstract fun onPlayerInputReceived(callback: (angularVelocity: Float) -> Unit)
+    abstract fun onGameStartReceived(callback: (canvasWidth: Float, canvasHeight: Float, playerIndex: Int) -> Unit)
+    abstract fun onPlayerInputReceived(callback: (playerIndex: Int, angularVelocity: Float) -> Unit)
     abstract fun onGameSyncReceived(callback: (GameSyncData) -> Unit)
     abstract fun onGameOverReceived(callback: (winnerIndex: Int) -> Unit)
-    abstract fun onRematchReceived(callback: () -> Unit)
+    abstract fun onRematchReceived(callback: (playerIndex: Int) -> Unit)
 
     // -----------------------------------------------------------------------
     // Send typed messages
     // -----------------------------------------------------------------------
 
     abstract fun sendGameStart(canvasWidth: Float, canvasHeight: Float)
-    abstract fun sendPlayerInput(angularVelocity: Float)
+    abstract fun sendPlayerInput(playerIndex: Int, angularVelocity: Float)
     abstract fun sendGameSync(data: GameSyncData)
     abstract fun sendGameOver(winnerIndex: Int)
     abstract fun sendRematch()
 }
 
+/** Per-player state for network transfer. */
+data class PlayerSyncData(
+    val x: Float,
+    val y: Float,
+    val angle: Float,
+    val angVel: Float,
+    val isDead: Boolean
+)
+
 /** Flattened game state for network transfer. */
 data class GameSyncData(
-    val p1X: Float, val p1Y: Float, val p1Angle: Float, val p1AngVel: Float, val p1Dead: Boolean,
-    val p2X: Float, val p2Y: Float, val p2Angle: Float, val p2AngVel: Float, val p2Dead: Boolean,
+    val players: List<PlayerSyncData>
 )
 
 /** Factory function — platform-specific. */

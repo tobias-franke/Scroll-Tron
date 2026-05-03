@@ -19,6 +19,21 @@ internal external fun setJsBoolean(obj: JsAny, key: String, value: Boolean)
 @JsFun("function(obj, key, value) { obj[key] = value; }")
 internal external fun setJsInt(obj: JsAny, key: String, value: Int)
 
+@JsFun("function(obj, key, value) { obj[key] = value; }")
+internal external fun setJsAny(obj: JsAny, key: String, value: JsAny)
+
+@JsFun("function() { return []; }")
+internal external fun createJsArray(): JsAny
+
+@JsFun("function(arr, item) { arr.push(item); }")
+internal external fun pushJsArray(arr: JsAny, item: JsAny)
+
+@JsFun("function(arr) { return arr.length; }")
+internal external fun getJsArrayLength(arr: JsAny): Int
+
+@JsFun("function(arr, index) { return arr[index]; }")
+internal external fun getJsArrayItem(arr: JsAny, index: Int): JsAny
+
 @JsFun("function(obj, key) { return obj[key] != null ? String(obj[key]) : null; }")
 internal external fun getJsString(obj: JsAny, key: String): String?
 
@@ -67,8 +82,15 @@ class WasmJsNetworkManager {
     var roomCode: String = ""
         private set
 
+    val numConnections: Int
+        get() = connections.size
+
+    val isGuest: Boolean
+        get() = hostConnection != null
+
     private var peer: JsPeer? = null
-    private var connection: JsDataConnection? = null
+    internal val connections = mutableMapOf<Int, JsDataConnection>() // Player index -> Connection
+    internal var hostConnection: JsDataConnection? = null // For guests: connection to host
 
     // Callbacks set by the lobby/game composables
     var onStateChanged: ((ConnectionState) -> Unit)? = null
@@ -98,8 +120,14 @@ class WasmJsNetworkManager {
 
         peer!!.on("connection") { connAny ->
             val dataConn = connAny!!.unsafeCast<JsDataConnection>()
-            connection = dataConn
-            setupDataConnection(dataConn)
+            if (connections.size >= 3) {
+                consoleLog("Maximum 4 players reached, rejecting connection from ${dataConn.peer}")
+                dataConn.close()
+                return@on
+            }
+            val playerIndex = connections.size + 1
+            connections[playerIndex] = dataConn
+            setupDataConnection(dataConn, playerIndex)
         }
 
         peer!!.on("error") { errAny ->
@@ -130,8 +158,8 @@ class WasmJsNetworkManager {
         peer!!.on("open") { _ ->
             consoleLog("Guest peer open, connecting to host: $peerId")
             val conn = peer!!.connect(peerId)
-            connection = conn
-            setupDataConnection(conn)
+            hostConnection = conn
+            setupDataConnection(conn, -1) // playerIndex -1 means we are a guest
         }
 
         peer!!.on("error") { errAny ->
@@ -146,26 +174,43 @@ class WasmJsNetworkManager {
     // Data channel setup
     // -----------------------------------------------------------------------
 
-    private fun setupDataConnection(conn: JsDataConnection) {
+    private fun setupDataConnection(conn: JsDataConnection, playerIndex: Int) {
         conn.on("open") { _ ->
-            consoleLog("Data channel open with peer: ${conn.peer}")
+            consoleLog("Data channel open with peer: ${conn.peer} (Player $playerIndex)")
             updateState(ConnectionState.Connected)
         }
 
         conn.on("data") { dataAny ->
             if (dataAny == null) return@on
             val type = getJsString(dataAny, "type") ?: return@on
+            
+            // If we are host and received input, we need to know which player it is
+            if (playerIndex != -1) {
+                setJsInt(dataAny, "playerIndex", playerIndex)
+                setJsBoolean(dataAny, "hasPlayerIndex", true)
+                
+                // Host broadcasts rematch requests to all other guests
+                if (type == MessageType.REMATCH) {
+                    connections.values.forEach { it.send(dataAny) }
+                }
+            }
+
             onMessageReceived?.invoke(type, dataAny)
         }
 
         conn.on("close") { _ ->
-            consoleLog("Data channel closed")
-            updateState(ConnectionState.Idle)
+            consoleLog("Data channel closed for Player $playerIndex")
+            if (playerIndex != -1) {
+                connections.remove(playerIndex)
+                if (connections.isEmpty()) updateState(ConnectionState.WaitingForGuest)
+            } else {
+                updateState(ConnectionState.Idle)
+            }
         }
 
         conn.on("error") { errAny ->
             val errStr = if (errAny != null) getErrorString(errAny) else "Unknown error"
-            consoleLog("Data channel error: $errStr")
+            consoleLog("Data channel error (Player $playerIndex): $errStr")
             errorMessage = "Data channel error: $errStr"
             updateState(ConnectionState.Error)
         }
@@ -176,34 +221,53 @@ class WasmJsNetworkManager {
     // -----------------------------------------------------------------------
 
     fun send(message: JsAny) {
-        connection?.send(message)
+        if (hostConnection != null) {
+            hostConnection?.send(message)
+        } else {
+            // Broadcast to all guests
+            connections.values.forEach { it.send(message) }
+        }
     }
 
-    fun sendPlayerInput(angularVelocity: Float) {
+    fun sendPlayerInput(playerIndex: Int, angularVelocity: Float) {
         val msg = createJsObject()
         setJsString(msg, "type", MessageType.PLAYER_INPUT)
+        setJsInt(msg, "playerIndex", playerIndex)
         setJsFloat(msg, "angularVelocity", angularVelocity)
         send(msg)
     }
 
-    fun sendGameSync(
-        p1X: Float, p1Y: Float, p1Angle: Float, p1AngVel: Float, p1Dead: Boolean,
-        p2X: Float, p2Y: Float, p2Angle: Float, p2AngVel: Float, p2Dead: Boolean,
-    ) {
+    fun sendGameSync(players: List<PlayerSyncData>) {
         val msg = createJsObject()
         setJsString(msg, "type", MessageType.GAME_SYNC)
-        setJsFloat(msg, "p1X", p1X); setJsFloat(msg, "p1Y", p1Y); setJsFloat(msg, "p1Angle", p1Angle); setJsFloat(msg, "p1AngVel", p1AngVel); setJsBoolean(msg, "p1Dead", p1Dead)
-        setJsFloat(msg, "p2X", p2X); setJsFloat(msg, "p2Y", p2Y); setJsFloat(msg, "p2Angle", p2Angle); setJsFloat(msg, "p2AngVel", p2AngVel); setJsBoolean(msg, "p2Dead", p2Dead)
+        
+        val playersArr = createJsArray()
+        players.forEach { p ->
+            val pObj = createJsObject()
+            setJsFloat(pObj, "x", p.x)
+            setJsFloat(pObj, "y", p.y)
+            setJsFloat(pObj, "angle", p.angle)
+            setJsFloat(pObj, "angVel", p.angVel)
+            setJsBoolean(pObj, "isDead", p.isDead)
+            pushJsArray(playersArr, pObj)
+        }
+        
+        // Use property name "players" for the array
+        setJsAny(msg, "players", playersArr)
         setJsFloat(msg, "timestamp", performanceNow())
         send(msg)
     }
 
     fun sendGameStart(canvasWidth: Float, canvasHeight: Float) {
-        val msg = createJsObject()
-        setJsString(msg, "type", MessageType.GAME_START)
-        setJsFloat(msg, "canvasWidth", canvasWidth)
-        setJsFloat(msg, "canvasHeight", canvasHeight)
-        send(msg)
+        // Host sends to each guest their player index
+        connections.forEach { (index, conn) ->
+            val msg = createJsObject()
+            setJsString(msg, "type", MessageType.GAME_START)
+            setJsFloat(msg, "canvasWidth", canvasWidth)
+            setJsFloat(msg, "canvasHeight", canvasHeight)
+            setJsInt(msg, "playerIndex", index)
+            conn.send(msg)
+        }
     }
 
     fun sendGameOver(winnerId: Int) {
@@ -224,8 +288,10 @@ class WasmJsNetworkManager {
     // -----------------------------------------------------------------------
 
     fun disconnect() {
-        connection?.close()
-        connection = null
+        hostConnection?.close()
+        hostConnection = null
+        connections.values.toList().forEach { it.close() }
+        connections.clear()
         peer?.destroy()
         peer = null
         updateState(ConnectionState.Idle)
