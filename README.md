@@ -1,8 +1,5 @@
-# 🚀 Scroll-Tron
+# 🥏 Scroll-Tron
 
-[![Compose Multiplatform](https://img.shields.io/badge/Compose-Multiplatform-blue?logo=kotlin)](https://github.com/JetBrains/compose-multiplatform)
-[![Kotlin](https://img.shields.io/badge/Kotlin-2.1.0-orange?logo=kotlin)](https://kotlinlang.org/)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 **Scroll-Tron** is a fast-paced, neon-infused arcade game inspired by the classic Tron light cycles, but with a twist: you steer using your **mouse scroll wheel**. Survive as long as possible, outmaneuver your opponents, and don't hit the walls!
 
