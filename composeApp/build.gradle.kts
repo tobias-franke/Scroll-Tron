@@ -62,10 +62,18 @@ compose.desktop {
     }
 }
 
+val isProdBuild = gradle.startParameter.taskNames.any { name ->
+    name.contains("composeCompatibilityBrowserDistribution") || name.contains("wasmJsBrowserDistribution")
+}
+
 val verifyWasmLinkage by tasks.registering(Exec::class) {
     group = "verification"
     description = "Verifies that the compiled Wasm module can be successfully instantiated without LinkErrors."
-    dependsOn("wasmJsBrowserDevelopmentExecutableDistribution")
+    if (isProdBuild) {
+        dependsOn("composeCompatibilityBrowserDistribution")
+    } else {
+        dependsOn("wasmJsBrowserDevelopmentExecutableDistribution")
+    }
     workingDir = project.projectDir
     commandLine("node", "verify-wasm-linkage.js")
 }
