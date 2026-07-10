@@ -61,3 +61,16 @@ compose.desktop {
         }
     }
 }
+
+val verifyWasmLinkage by tasks.registering(Exec::class) {
+    group = "verification"
+    description = "Verifies that the compiled Wasm module can be successfully instantiated without LinkErrors."
+    dependsOn("wasmJsBrowserDevelopmentExecutableDistribution")
+    workingDir = project.projectDir
+    commandLine("node", "verify-wasm-linkage.js")
+}
+
+tasks.named("check") {
+    dependsOn(verifyWasmLinkage)
+}
+
