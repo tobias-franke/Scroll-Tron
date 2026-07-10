@@ -38,4 +38,5 @@ jobs:
         uses: gradle/actions/setup-gradle@v6
 
       - name: Build Web (WASM + JS)
-        run: ./gradlew :composeApp:composeCompatibilityBrowserDistribution
+        run: ./gradlew :composeApp:composeCompatibilityBrowserDistribution :composeApp:verifyWasmLinkage
+
