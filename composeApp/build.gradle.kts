@@ -66,7 +66,7 @@ val isProdBuild = gradle.startParameter.taskNames.any { name ->
     name.contains("composeCompatibilityBrowserDistribution") || name.contains("wasmJsBrowserDistribution")
 }
 
-val verifyWasmLinkage by tasks.registering(Exec::class) {
+val verifyWasmLinkage = tasks.register<Exec>("verifyWasmLinkage") {
     group = "verification"
     description = "Verifies that the compiled Wasm module can be successfully instantiated without LinkErrors."
     if (isProdBuild) {
@@ -80,5 +80,21 @@ val verifyWasmLinkage by tasks.registering(Exec::class) {
 
 tasks.named("check") {
     dependsOn(verifyWasmLinkage)
+}
+
+tasks.named("wasmJsBrowserProductionWebpack") {
+    mustRunAfter("wasmJsDevelopmentExecutableCompileSync")
+}
+
+tasks.named("wasmJsBrowserDevelopmentWebpack") {
+    mustRunAfter("wasmJsProductionExecutableCompileSync")
+}
+
+tasks.named("jsBrowserProductionWebpack") {
+    mustRunAfter("jsDevelopmentExecutableCompileSync")
+}
+
+tasks.named("jsBrowserDevelopmentWebpack") {
+    mustRunAfter("jsProductionExecutableCompileSync")
 }
 
