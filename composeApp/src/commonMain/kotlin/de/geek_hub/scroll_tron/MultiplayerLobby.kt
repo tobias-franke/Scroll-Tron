@@ -440,9 +440,14 @@ fun MultiplayerLobby(
 
                     Spacer(modifier = Modifier.height(16.dp))
 
-                    if (joinCode.length == 4) {
-                        LobbyButton("CONNECT", NEON_LIME, gameFont) {
-                            connector.joinGame(joinCode)
+                    Box(
+                        modifier = Modifier.height(52.dp),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        if (joinCode.length == 4) {
+                            LobbyButton("CONNECT", NEON_LIME, gameFont) {
+                                connector.joinGame(joinCode)
+                            }
                         }
                     }
                 }
