@@ -11,5 +11,6 @@ sealed class Screen {
     data class MultiplayerGame(
         val isHost: Boolean,
         val roomCode: String,
+        val aiCount: Int = 0,
     ) : Screen()
 }

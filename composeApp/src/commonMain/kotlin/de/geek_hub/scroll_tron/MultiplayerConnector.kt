@@ -66,7 +66,8 @@ data class PlayerSyncData(
     val y: Float,
     val angle: Float,
     val angVel: Float,
-    val isDead: Boolean
+    val isDead: Boolean,
+    val isBot: Boolean = false,
 )
 
 /** Flattened game state for network transfer. */

@@ -768,12 +768,13 @@ fun App(onExit: () -> Unit = {}) {
         is Screen.MultiplayerLobby -> {
             MultiplayerLobby(
                 onBack = { currentScreen = Screen.MainMenu },
-                onGameReady = { connector, isHost ->
+                onGameReady = { connector, isHost, aiCount ->
                     mpConnector = connector
                     mpIsHost = isHost
                     currentScreen = Screen.MultiplayerGame(
                         isHost = isHost,
                         roomCode = connector.roomCode,
+                        aiCount = aiCount,
                     )
                 },
             )
@@ -784,6 +785,7 @@ fun App(onExit: () -> Unit = {}) {
                 MultiplayerGame(
                     connector = connector,
                     isHost = screen.isHost,
+                    aiCount = screen.aiCount,
                     onBack = {
                         connector.disconnect()
                         mpConnector = null
