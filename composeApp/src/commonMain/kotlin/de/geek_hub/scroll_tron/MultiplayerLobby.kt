@@ -208,22 +208,22 @@ fun MultiplayerLobby(
                 lobbyMode == LobbyMode.Host -> {
                     val codeBorderColor by animateColorAsState(
                         targetValue = if (copiedCode) NEON_LIME else NEON_CYAN.copy(alpha = 0.5f),
-                        animationSpec = tween(durationMillis = 350),
+                        animationSpec = tween(durationMillis = 600),
                         label = "codeBorderColor"
                     )
                     val codeTextColor by animateColorAsState(
                         targetValue = if (copiedCode) NEON_LIME else NEON_CYAN,
-                        animationSpec = tween(durationMillis = 350),
+                        animationSpec = tween(durationMillis = 600),
                         label = "codeTextColor"
                     )
                     val feedbackColor by animateColorAsState(
                         targetValue = if (copiedCode) NEON_LIME else NEON_CYAN.copy(alpha = 0.85f),
-                        animationSpec = tween(durationMillis = 350),
+                        animationSpec = tween(durationMillis = 600),
                         label = "feedbackColor"
                     )
 
                     Text(
-                        text = "YOUR ROOM CODE",
+                        text = "ROOM CODE",
                         fontFamily = gameFont,
                         fontSize = 18.sp,
                         fontWeight = FontWeight.Medium,
@@ -254,7 +254,7 @@ fun MultiplayerLobby(
                         )
                     }
 
-                    Spacer(modifier = Modifier.height(14.dp))
+                    Spacer(modifier = Modifier.height(12.dp))
 
                     Text(
                         text = if (copiedCode) "COPIED TO CLIPBOARD!" else "CLICK CODE TO COPY",
@@ -264,28 +264,19 @@ fun MultiplayerLobby(
                         color = feedbackColor,
                     )
 
-                    Spacer(modifier = Modifier.height(8.dp))
-
-                    Text(
-                        text = "SHARE THIS CODE WITH YOUR OPPONENT",
-                        fontFamily = gameFont,
-                        fontSize = 14.sp,
-                        color = DIM_TEXT,
-                    )
-
-                    Spacer(modifier = Modifier.height(20.dp))
+                    Spacer(modifier = Modifier.height(28.dp))
 
                     // Animated waiting indicator
                     val dots = ".".repeat(((frameCount * 0.5f).toInt() % 4))
                     Text(
-                        text = "PLAYERS CONNECTED: ${connector.connectedPlayers}/4$dots",
+                        text = "PLAYERS (${connector.connectedPlayers}/4)$dots",
                         fontFamily = gameFont,
                         fontSize = 18.sp,
                         fontWeight = FontWeight.Bold,
                         color = NEON_CYAN,
                     )
 
-                    Spacer(modifier = Modifier.height(24.dp))
+                    Spacer(modifier = Modifier.height(16.dp))
 
                     // Player slots
                     Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -309,7 +300,7 @@ fun MultiplayerLobby(
                         }
                     }
 
-                    Spacer(modifier = Modifier.height(32.dp))
+                    Spacer(modifier = Modifier.height(28.dp))
 
                     if (connector.connectedPlayers >= 2) {
                         LobbyButton("START GAME", NEON_LIME, gameFont) {
@@ -317,7 +308,7 @@ fun MultiplayerLobby(
                         }
                     } else {
                         Text(
-                            text = "NEED AT LEAST 2 PLAYERS",
+                            text = "WAITING FOR OPPONENT$dots",
                             fontFamily = gameFont,
                             fontSize = 16.sp,
                             color = DIM_TEXT,
@@ -448,13 +439,6 @@ fun MultiplayerLobby(
                         LobbyButton("CONNECT", NEON_LIME, gameFont) {
                             connector.joinGame(joinCode)
                         }
-                    } else {
-                        Text(
-                            text = "CLICK PASTE OR PRESS CTRL+V / CMD+V",
-                            fontFamily = gameFont,
-                            fontSize = 14.sp,
-                            color = DIM_TEXT,
-                        )
                     }
                 }
 
