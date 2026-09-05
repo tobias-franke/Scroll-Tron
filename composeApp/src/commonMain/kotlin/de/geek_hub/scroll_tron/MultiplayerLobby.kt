@@ -206,19 +206,20 @@ fun MultiplayerLobby(
 
                 // Host: waiting for guest
                 lobbyMode == LobbyMode.Host -> {
+                    val fadeDuration = if (copiedCode) 150 else 600
                     val codeBorderColor by animateColorAsState(
                         targetValue = if (copiedCode) NEON_LIME else NEON_CYAN.copy(alpha = 0.5f),
-                        animationSpec = tween(durationMillis = 600),
+                        animationSpec = tween(durationMillis = fadeDuration),
                         label = "codeBorderColor"
                     )
                     val codeTextColor by animateColorAsState(
                         targetValue = if (copiedCode) NEON_LIME else NEON_CYAN,
-                        animationSpec = tween(durationMillis = 600),
+                        animationSpec = tween(durationMillis = fadeDuration),
                         label = "codeTextColor"
                     )
                     val feedbackColor by animateColorAsState(
                         targetValue = if (copiedCode) NEON_LIME else NEON_CYAN.copy(alpha = 0.85f),
-                        animationSpec = tween(durationMillis = 600),
+                        animationSpec = tween(durationMillis = fadeDuration),
                         label = "feedbackColor"
                     )
 
