@@ -301,18 +301,23 @@ fun MultiplayerLobby(
 
                     Spacer(modifier = Modifier.height(28.dp))
 
-                    if (connector.connectedPlayers >= 2) {
-                        LobbyButton("START GAME", NEON_LIME, gameFont) {
-                            onGameReady(connector, true)
+                    Box(
+                        modifier = Modifier.height(52.dp),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        if (connector.connectedPlayers >= 2) {
+                            LobbyButton("START GAME", NEON_LIME, gameFont) {
+                                onGameReady(connector, true)
+                            }
+                        } else {
+                            val dots = ".".repeat(((frameCount * 0.5f).toInt() % 4))
+                            Text(
+                                text = "WAITING FOR OPPONENT$dots",
+                                fontFamily = gameFont,
+                                fontSize = 16.sp,
+                                color = DIM_TEXT,
+                            )
                         }
-                    } else {
-                        val dots = ".".repeat(((frameCount * 0.5f).toInt() % 4))
-                        Text(
-                            text = "WAITING FOR OPPONENT$dots",
-                            fontFamily = gameFont,
-                            fontSize = 16.sp,
-                            color = DIM_TEXT,
-                        )
                     }
                 }
 
@@ -496,10 +501,11 @@ private fun LobbyButton(
 ) {
     Box(
         modifier = modifier
+            .height(52.dp)
             .border(1.dp, color.copy(alpha = 0.7f), RoundedCornerShape(4.dp))
             .clickable(onClick = onClick)
             .pointerHoverIcon(PointerIcon.Hand)
-            .padding(horizontal = 24.dp, vertical = 14.dp),
+            .padding(horizontal = 24.dp),
         contentAlignment = Alignment.Center,
     ) {
         Text(
