@@ -133,7 +133,11 @@ class WasmJsNetworkManager {
         peer!!.on("error") { errAny ->
             val errStr = if (errAny != null) getErrorString(errAny) else "Unknown error"
             consoleLog("PeerJS host error: $errStr")
-            errorMessage = "Connection error: $errStr"
+            errorMessage = if (errStr == "unavailable-id") {
+                "Room code is already in use. Please try again."
+            } else {
+                "Connection error: $errStr"
+            }
             updateState(ConnectionState.Error)
         }
     }
@@ -165,7 +169,11 @@ class WasmJsNetworkManager {
         peer!!.on("error") { errAny ->
             val errStr = if (errAny != null) getErrorString(errAny) else "Unknown error"
             consoleLog("PeerJS guest error: $errStr")
-            errorMessage = "Connection error: $errStr"
+            errorMessage = if (errStr == "peer-unavailable") {
+                "Room '$roomCode' not found. Please check the code."
+            } else {
+                "Connection error: $errStr"
+            }
             updateState(ConnectionState.Error)
         }
     }

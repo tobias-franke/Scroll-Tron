@@ -92,8 +92,13 @@ class NetworkManager {
 
         peer!!.on("error") { err ->
             console.log("PeerJS host error: $err")
-            val errMsg = err.asDynamic().type?.toString() ?: err.toString()
-            errorMessage = "Connection error: $errMsg"
+            val errType = err?.type?.toString()
+            errorMessage = if (errType == "unavailable-id") {
+                "Room code is already in use. Please try again."
+            } else {
+                val detail = errType ?: err?.message?.toString() ?: err?.toString() ?: "Unknown error"
+                "Connection error: $detail"
+            }
             updateState(ConnectionState.Error)
         }
     }
@@ -124,8 +129,13 @@ class NetworkManager {
 
         peer!!.on("error") { err ->
             console.log("PeerJS guest error: $err")
-            val errMsg = err.asDynamic().type?.toString() ?: err.toString()
-            errorMessage = "Connection error: $errMsg"
+            val errType = err?.type?.toString()
+            errorMessage = if (errType == "peer-unavailable") {
+                "Room '$roomCode' not found. Please check the code."
+            } else {
+                val detail = errType ?: err?.message?.toString() ?: err?.toString() ?: "Unknown error"
+                "Connection error: $detail"
+            }
             updateState(ConnectionState.Error)
         }
     }
