@@ -167,301 +167,326 @@ fun MultiplayerLobby(
 
             Spacer(modifier = Modifier.height(48.dp))
 
-            when {
-                // Error state
-                connState == LobbyConnectionState.Error -> {
-                    Text(
-                        text = "CONNECTION ERROR",
-                        fontFamily = gameFont,
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 22.sp,
-                        color = Color(0xFFFF3333),
-                    )
-                    Spacer(modifier = Modifier.height(12.dp))
-                    Text(
-                        text = errorMsg ?: "Unknown error",
-                        fontFamily = gameFont,
-                        fontSize = 15.sp,
-                        color = DIM_TEXT,
-                    )
-                    Spacer(modifier = Modifier.height(24.dp))
-                    LobbyButton("RETRY", NEON_CYAN, gameFont) {
-                        connector.disconnect()
-                        connState = LobbyConnectionState.Idle
-                        lobbyMode = null
-                    }
-                }
-
-                // Choosing mode
-                lobbyMode == null -> {
-                    LobbyButton("HOST GAME", NEON_CYAN, gameFont) {
-                        lobbyMode = LobbyMode.Host
-                        connector.hostGame()
-                    }
-                    Spacer(modifier = Modifier.height(20.dp))
-                    LobbyButton("JOIN GAME", NEON_PINK, gameFont) {
-                        lobbyMode = LobbyMode.Join
-                    }
-                }
-
-                // Host: waiting for guest
-                lobbyMode == LobbyMode.Host -> {
-                    val fadeDuration = if (copiedCode) 150 else 600
-                    val codeBorderColor by animateColorAsState(
-                        targetValue = if (copiedCode) NEON_LIME else NEON_CYAN.copy(alpha = 0.5f),
-                        animationSpec = tween(durationMillis = fadeDuration),
-                        label = "codeBorderColor"
-                    )
-                    val codeTextColor by animateColorAsState(
-                        targetValue = if (copiedCode) NEON_LIME else NEON_CYAN,
-                        animationSpec = tween(durationMillis = fadeDuration),
-                        label = "codeTextColor"
-                    )
-                    val feedbackColor by animateColorAsState(
-                        targetValue = if (copiedCode) NEON_LIME else NEON_CYAN.copy(alpha = 0.85f),
-                        animationSpec = tween(durationMillis = fadeDuration),
-                        label = "feedbackColor"
-                    )
-
-                    Text(
-                        text = "ROOM CODE",
-                        fontFamily = gameFont,
-                        fontSize = 18.sp,
-                        fontWeight = FontWeight.Medium,
-                        color = DIM_TEXT,
-                    )
-                    Spacer(modifier = Modifier.height(14.dp))
-
-                    // Big room code display
-                    Box(
-                        modifier = Modifier
-                            .border(2.dp, codeBorderColor, RoundedCornerShape(8.dp))
-                            .clickable {
-                                if (connector.roomCode.isNotEmpty()) {
-                                    copyToClipboard(connector.roomCode)
-                                    copiedCode = true
-                                }
-                            }
-                            .pointerHoverIcon(PointerIcon.Hand)
-                            .padding(horizontal = 36.dp, vertical = 18.dp),
-                    ) {
-                        Text(
-                            text = connector.roomCode,
-                            fontFamily = gameFont,
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 48.sp,
-                            color = codeTextColor,
-                            letterSpacing = 12.sp,
-                        )
-                    }
-
-                    Spacer(modifier = Modifier.height(12.dp))
-
-                    Text(
-                        text = if (copiedCode) "COPIED TO CLIPBOARD!" else "CLICK CODE TO COPY",
-                        fontFamily = gameFont,
-                        fontSize = 16.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = feedbackColor,
-                    )
-
-                    Spacer(modifier = Modifier.height(28.dp))
-
-                    Text(
-                        text = "PLAYERS (${connector.connectedPlayers}/4)",
-                        fontFamily = gameFont,
-                        fontSize = 18.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = NEON_CYAN,
-                    )
-
-                    Spacer(modifier = Modifier.height(16.dp))
-
-                    // Player slots
-                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                        for (i in 0 until 4) {
-                            val isConnected = i < connector.connectedPlayers
-                            val color = if (isConnected) PLAYER_COLORS[i] else DIM_TEXT
-                            Box(
-                                modifier = Modifier
-                                    .size(64.dp)
-                                    .border(1.5.dp, color, RoundedCornerShape(4.dp)),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Text(
-                                    text = "P${i + 1}",
-                                    fontFamily = gameFont,
-                                    fontSize = 16.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = color
-                                )
-                            }
-                        }
-                    }
-
-                    Spacer(modifier = Modifier.height(28.dp))
-
-                    Box(
-                        modifier = Modifier.height(52.dp),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        if (connector.connectedPlayers >= 2) {
-                            LobbyButton("START GAME", NEON_LIME, gameFont) {
-                                onGameReady(connector, true)
-                            }
-                        } else {
-                            val dots = ".".repeat(((frameCount * 0.5f).toInt() % 4))
+            Box(
+                modifier = Modifier.height(390.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                when {
+                    // Error state
+                    connState == LobbyConnectionState.Error -> {
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.Center,
+                        ) {
                             Text(
-                                text = "WAITING FOR OPPONENT$dots",
+                                text = "CONNECTION ERROR",
                                 fontFamily = gameFont,
-                                fontSize = 16.sp,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 22.sp,
+                                color = Color(0xFFFF3333),
+                            )
+                            Spacer(modifier = Modifier.height(12.dp))
+                            Text(
+                                text = errorMsg ?: "Unknown error",
+                                fontFamily = gameFont,
+                                fontSize = 15.sp,
                                 color = DIM_TEXT,
                             )
+                            Spacer(modifier = Modifier.height(24.dp))
+                            LobbyButton("RETRY", NEON_CYAN, gameFont) {
+                                connector.disconnect()
+                                connState = LobbyConnectionState.Idle
+                                lobbyMode = null
+                            }
                         }
                     }
-                }
 
-                // Join: enter code
-                lobbyMode == LobbyMode.Join && connState == LobbyConnectionState.Idle -> {
-                    Text(
-                        text = "ENTER ROOM CODE",
-                        fontFamily = gameFont,
-                        fontSize = 18.sp,
-                        fontWeight = FontWeight.Medium,
-                        color = DIM_TEXT,
-                    )
-                    Spacer(modifier = Modifier.height(14.dp))
+                    // Choosing mode
+                    lobbyMode == null -> {
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.Center,
+                        ) {
+                            LobbyButton("HOST GAME", NEON_CYAN, gameFont) {
+                                lobbyMode = LobbyMode.Host
+                                connector.hostGame()
+                            }
+                            Spacer(modifier = Modifier.height(20.dp))
+                            LobbyButton("JOIN GAME", NEON_PINK, gameFont) {
+                                lobbyMode = LobbyMode.Join
+                            }
+                        }
+                    }
 
-                    // Code input field
-                    Box(
-                        modifier = Modifier
-                            .border(2.dp, NEON_PINK.copy(alpha = 0.5f), RoundedCornerShape(8.dp))
-                            .clickable { focusRequester.requestFocus() }
-                            .pointerHoverIcon(PointerIcon.Text)
-                            .padding(horizontal = 32.dp, vertical = 16.dp),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        BasicTextField(
-                            value = joinCode,
-                            modifier = Modifier
-                                .focusRequester(focusRequester)
-                                .onKeyEvent { event ->
-                                    if (event.type == KeyEventType.KeyDown) {
-                                        if (event.key == Key.Enter) {
-                                            if (joinCode.length == 4) {
-                                                connector.joinGame(joinCode)
-                                                true
-                                            } else false
-                                        } else if ((event.isCtrlPressed || event.isMetaPressed) && event.key == Key.V) {
-                                            getFromClipboard { text ->
-                                                if (!text.isNullOrBlank()) {
-                                                    val code = sanitizeRoomCode(text)
-                                                    if (code.isNotEmpty()) {
-                                                        joinCode = code
-                                                    }
-                                                }
-                                            }
-                                            true
-                                        } else false
-                                    } else false
-                                },
-                            onValueChange = { newValue ->
-                                joinCode = sanitizeRoomCode(newValue)
-                            },
-                            textStyle = TextStyle(
-                                fontSize = 48.sp,
+                    // Host: waiting for guest
+                    lobbyMode == LobbyMode.Host -> {
+                        val fadeDuration = if (copiedCode) 150 else 600
+                        val codeBorderColor by animateColorAsState(
+                            targetValue = if (copiedCode) NEON_LIME else NEON_CYAN.copy(alpha = 0.5f),
+                            animationSpec = tween(durationMillis = fadeDuration),
+                            label = "codeBorderColor"
+                        )
+                        val codeTextColor by animateColorAsState(
+                            targetValue = if (copiedCode) NEON_LIME else NEON_CYAN,
+                            animationSpec = tween(durationMillis = fadeDuration),
+                            label = "codeTextColor"
+                        )
+                        val feedbackColor by animateColorAsState(
+                            targetValue = if (copiedCode) NEON_LIME else NEON_CYAN.copy(alpha = 0.85f),
+                            animationSpec = tween(durationMillis = fadeDuration),
+                            label = "feedbackColor"
+                        )
+
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.Center,
+                        ) {
+                            Text(
+                                text = "ROOM CODE",
                                 fontFamily = gameFont,
-                                color = Color.Transparent, // Hide actual text
-                            ),
-                            singleLine = true,
-                            cursorBrush = SolidColor(Color.Transparent), // Hide default cursor
-                            decorationBox = { innerTextField ->
-                                Box(contentAlignment = Alignment.Center) {
-                                    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                                        for (i in 0 until 4) {
-                                            val char = joinCode.getOrNull(i)
-                                            val isCurrentFocus = i == joinCode.length
-                                            val charToDraw = char?.toString() ?: "_"
-                                            val alpha = if (char != null) 1f else if (isCurrentFocus) pulse else 0.3f
-                                            
-                                            Text(
-                                                text = charToDraw,
-                                                fontFamily = gameFont,
-                                                fontSize = 48.sp,
-                                                fontWeight = FontWeight.Bold,
-                                                color = NEON_PINK.copy(alpha = alpha),
-                                            )
+                                fontSize = 18.sp,
+                                fontWeight = FontWeight.Medium,
+                                color = DIM_TEXT,
+                            )
+                            Spacer(modifier = Modifier.height(14.dp))
+
+                            // Big room code display
+                            Box(
+                                modifier = Modifier
+                                    .border(2.dp, codeBorderColor, RoundedCornerShape(8.dp))
+                                    .clickable {
+                                        if (connector.roomCode.isNotEmpty()) {
+                                            copyToClipboard(connector.roomCode)
+                                            copiedCode = true
                                         }
                                     }
-                                    Box(modifier = Modifier.matchParentSize()) {
-                                        innerTextField()
+                                    .pointerHoverIcon(PointerIcon.Hand)
+                                    .padding(horizontal = 36.dp, vertical = 18.dp),
+                            ) {
+                                Text(
+                                    text = connector.roomCode,
+                                    fontFamily = gameFont,
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 48.sp,
+                                    color = codeTextColor,
+                                    letterSpacing = 12.sp,
+                                )
+                            }
+
+                            Spacer(modifier = Modifier.height(12.dp))
+
+                            Text(
+                                text = if (copiedCode) "COPIED TO CLIPBOARD!" else "CLICK CODE TO COPY",
+                                fontFamily = gameFont,
+                                fontSize = 16.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = feedbackColor,
+                            )
+
+                            Spacer(modifier = Modifier.height(24.dp))
+
+                            Text(
+                                text = "PLAYERS (${connector.connectedPlayers}/4)",
+                                fontFamily = gameFont,
+                                fontSize = 18.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = NEON_CYAN,
+                            )
+
+                            Spacer(modifier = Modifier.height(16.dp))
+
+                            // Player slots
+                            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                                for (i in 0 until 4) {
+                                    val isConnected = i < connector.connectedPlayers
+                                    val color = if (isConnected) PLAYER_COLORS[i] else DIM_TEXT
+                                    Box(
+                                        modifier = Modifier
+                                            .size(64.dp)
+                                            .border(1.5.dp, color, RoundedCornerShape(4.dp)),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Text(
+                                            text = "P${i + 1}",
+                                            fontFamily = gameFont,
+                                            fontSize = 16.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = color
+                                        )
                                     }
                                 }
                             }
+
+                            Spacer(modifier = Modifier.height(24.dp))
+
+                            Box(
+                                modifier = Modifier.height(52.dp),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                if (connector.connectedPlayers >= 2) {
+                                    LobbyButton("START GAME", NEON_LIME, gameFont) {
+                                        onGameReady(connector, true)
+                                    }
+                                } else {
+                                    val dots = ".".repeat(((frameCount * 0.5f).toInt() % 4))
+                                    Text(
+                                        text = "WAITING FOR OPPONENT$dots",
+                                        fontFamily = gameFont,
+                                        fontSize = 16.sp,
+                                        color = DIM_TEXT,
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    // Join: enter code
+                    lobbyMode == LobbyMode.Join && connState == LobbyConnectionState.Idle -> {
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.Center,
+                        ) {
+                            Text(
+                                text = "ENTER ROOM CODE",
+                                fontFamily = gameFont,
+                                fontSize = 18.sp,
+                                fontWeight = FontWeight.Medium,
+                                color = DIM_TEXT,
+                            )
+                            Spacer(modifier = Modifier.height(14.dp))
+
+                            // Code input field
+                            Box(
+                                modifier = Modifier
+                                    .border(2.dp, NEON_PINK.copy(alpha = 0.5f), RoundedCornerShape(8.dp))
+                                    .clickable { focusRequester.requestFocus() }
+                                    .pointerHoverIcon(PointerIcon.Text)
+                                    .padding(horizontal = 32.dp, vertical = 16.dp),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                BasicTextField(
+                                    value = joinCode,
+                                    modifier = Modifier
+                                        .focusRequester(focusRequester)
+                                        .onKeyEvent { event ->
+                                            if (event.type == KeyEventType.KeyDown) {
+                                                if (event.key == Key.Enter) {
+                                                    if (joinCode.length == 4) {
+                                                        connector.joinGame(joinCode)
+                                                        true
+                                                    } else false
+                                                } else if ((event.isCtrlPressed || event.isMetaPressed) && event.key == Key.V) {
+                                                    getFromClipboard { text ->
+                                                        if (!text.isNullOrBlank()) {
+                                                            val code = sanitizeRoomCode(text)
+                                                            if (code.isNotEmpty()) {
+                                                                joinCode = code
+                                                            }
+                                                        }
+                                                    }
+                                                    true
+                                                } else false
+                                            } else false
+                                        },
+                                    onValueChange = { newValue ->
+                                        joinCode = sanitizeRoomCode(newValue)
+                                    },
+                                    textStyle = TextStyle(
+                                        fontSize = 48.sp,
+                                        fontFamily = gameFont,
+                                        color = Color.Transparent, // Hide actual text
+                                    ),
+                                    singleLine = true,
+                                    cursorBrush = SolidColor(Color.Transparent), // Hide default cursor
+                                    decorationBox = { innerTextField ->
+                                        Box(contentAlignment = Alignment.Center) {
+                                            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                                                for (i in 0 until 4) {
+                                                    val char = joinCode.getOrNull(i)
+                                                    val isCurrentFocus = i == joinCode.length
+                                                    val charToDraw = char?.toString() ?: "_"
+                                                    val alpha = if (char != null) 1f else if (isCurrentFocus) pulse else 0.3f
+                                                    
+                                                    Text(
+                                                        text = charToDraw,
+                                                        fontFamily = gameFont,
+                                                        fontSize = 48.sp,
+                                                        fontWeight = FontWeight.Bold,
+                                                        color = NEON_PINK.copy(alpha = alpha),
+                                                    )
+                                                }
+                                            }
+                                            Box(modifier = Modifier.matchParentSize()) {
+                                                innerTextField()
+                                            }
+                                        }
+                                    }
+                                )
+                            }
+
+                            Spacer(modifier = Modifier.height(16.dp))
+
+                            // Paste / Clear buttons
+                            Row(
+                                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                LobbyButton(
+                                    text = "PASTE",
+                                    color = NEON_PINK,
+                                    gameFont = gameFont,
+                                    modifier = Modifier.width(if (joinCode.isNotEmpty()) 134.dp else 280.dp),
+                                ) {
+                                    getFromClipboard { text ->
+                                        if (!text.isNullOrBlank()) {
+                                            val code = sanitizeRoomCode(text)
+                                            if (code.isNotEmpty()) {
+                                                joinCode = code
+                                            }
+                                        }
+                                    }
+                                    focusRequester.requestFocus()
+                                }
+
+                                if (joinCode.isNotEmpty()) {
+                                    LobbyButton(
+                                        text = "CLEAR",
+                                        color = DIM_TEXT,
+                                        gameFont = gameFont,
+                                        modifier = Modifier.width(134.dp),
+                                    ) {
+                                        joinCode = ""
+                                        focusRequester.requestFocus()
+                                    }
+                                }
+                            }
+
+                            Spacer(modifier = Modifier.height(16.dp))
+
+                            Box(
+                                modifier = Modifier.height(52.dp),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                if (joinCode.length == 4) {
+                                    LobbyButton("CONNECT", NEON_LIME, gameFont) {
+                                        connector.joinGame(joinCode)
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // Join: connecting
+                    lobbyMode == LobbyMode.Join && connState == LobbyConnectionState.Connecting -> {
+                        val dots = ".".repeat(((frameCount * 0.5f).toInt() % 4))
+                        Text(
+                            text = "CONNECTING$dots",
+                            fontFamily = gameFont,
+                            fontSize = 20.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = NEON_PINK,
                         )
                     }
-
-                    Spacer(modifier = Modifier.height(16.dp))
-
-                    // Paste / Clear buttons
-                    Row(
-                        horizontalArrangement = Arrangement.spacedBy(12.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        LobbyButton(
-                            text = "PASTE",
-                            color = NEON_PINK,
-                            gameFont = gameFont,
-                            modifier = Modifier.width(if (joinCode.isNotEmpty()) 134.dp else 280.dp),
-                        ) {
-                            getFromClipboard { text ->
-                                if (!text.isNullOrBlank()) {
-                                    val code = sanitizeRoomCode(text)
-                                    if (code.isNotEmpty()) {
-                                        joinCode = code
-                                    }
-                                }
-                            }
-                            focusRequester.requestFocus()
-                        }
-
-                        if (joinCode.isNotEmpty()) {
-                            LobbyButton(
-                                text = "CLEAR",
-                                color = DIM_TEXT,
-                                gameFont = gameFont,
-                                modifier = Modifier.width(134.dp),
-                            ) {
-                                joinCode = ""
-                                focusRequester.requestFocus()
-                            }
-                        }
-                    }
-
-                    Spacer(modifier = Modifier.height(16.dp))
-
-                    Box(
-                        modifier = Modifier.height(52.dp),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        if (joinCode.length == 4) {
-                            LobbyButton("CONNECT", NEON_LIME, gameFont) {
-                                connector.joinGame(joinCode)
-                            }
-                        }
-                    }
-                }
-
-                // Join: connecting
-                lobbyMode == LobbyMode.Join && connState == LobbyConnectionState.Connecting -> {
-                    val dots = ".".repeat(((frameCount * 0.5f).toInt() % 4))
-                    Text(
-                        text = "CONNECTING$dots",
-                        fontFamily = gameFont,
-                        fontSize = 20.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = NEON_PINK,
-                    )
                 }
             }
 
