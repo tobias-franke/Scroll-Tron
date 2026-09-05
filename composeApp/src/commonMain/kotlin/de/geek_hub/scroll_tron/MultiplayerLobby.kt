@@ -28,6 +28,8 @@ import org.jetbrains.compose.resources.Font
 import scrolltron.composeapp.generated.resources.Res
 import scrolltron.composeapp.generated.resources.orbitron_bold
 import scrolltron.composeapp.generated.resources.orbitron_regular
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.tween
 import kotlinx.coroutines.delay
 import kotlin.math.sin
 
@@ -40,7 +42,7 @@ private val NEON_PINK   = Color(0xFFFF00FF)
 private val NEON_LIME   = Color(0xFF39FF14)
 private val GRID_COLOR  = Color(0xFF0D2A0D)
 private val BG_COLOR    = Color(0xFF020C02)
-private val DIM_TEXT    = Color(0xFFAAAAAA)
+private val DIM_TEXT    = Color(0xFFCCCCCC)
 
 // ---------------------------------------------------------------------------
 // Multiplayer Lobby
@@ -172,14 +174,14 @@ fun MultiplayerLobby(
                         text = "CONNECTION ERROR",
                         fontFamily = gameFont,
                         fontWeight = FontWeight.Bold,
-                        fontSize = 20.sp,
+                        fontSize = 22.sp,
                         color = Color(0xFFFF3333),
                     )
                     Spacer(modifier = Modifier.height(12.dp))
                     Text(
                         text = errorMsg ?: "Unknown error",
                         fontFamily = gameFont,
-                        fontSize = 12.sp,
+                        fontSize = 15.sp,
                         color = DIM_TEXT,
                     )
                     Spacer(modifier = Modifier.height(24.dp))
@@ -204,18 +206,35 @@ fun MultiplayerLobby(
 
                 // Host: waiting for guest
                 lobbyMode == LobbyMode.Host -> {
+                    val codeBorderColor by animateColorAsState(
+                        targetValue = if (copiedCode) NEON_LIME else NEON_CYAN.copy(alpha = 0.5f),
+                        animationSpec = tween(durationMillis = 350),
+                        label = "codeBorderColor"
+                    )
+                    val codeTextColor by animateColorAsState(
+                        targetValue = if (copiedCode) NEON_LIME else NEON_CYAN,
+                        animationSpec = tween(durationMillis = 350),
+                        label = "codeTextColor"
+                    )
+                    val feedbackColor by animateColorAsState(
+                        targetValue = if (copiedCode) NEON_LIME else NEON_CYAN.copy(alpha = 0.85f),
+                        animationSpec = tween(durationMillis = 350),
+                        label = "feedbackColor"
+                    )
+
                     Text(
                         text = "YOUR ROOM CODE",
                         fontFamily = gameFont,
-                        fontSize = 14.sp,
+                        fontSize = 18.sp,
+                        fontWeight = FontWeight.Medium,
                         color = DIM_TEXT,
                     )
-                    Spacer(modifier = Modifier.height(12.dp))
+                    Spacer(modifier = Modifier.height(14.dp))
 
                     // Big room code display
                     Box(
                         modifier = Modifier
-                            .border(2.dp, if (copiedCode) NEON_LIME else NEON_CYAN.copy(alpha = 0.5f), RoundedCornerShape(8.dp))
+                            .border(2.dp, codeBorderColor, RoundedCornerShape(8.dp))
                             .clickable {
                                 if (connector.roomCode.isNotEmpty()) {
                                     copyToClipboard(connector.roomCode)
@@ -223,26 +242,26 @@ fun MultiplayerLobby(
                                 }
                             }
                             .pointerHoverIcon(PointerIcon.Hand)
-                            .padding(horizontal = 32.dp, vertical = 16.dp),
+                            .padding(horizontal = 36.dp, vertical = 18.dp),
                     ) {
                         Text(
                             text = connector.roomCode,
                             fontFamily = gameFont,
                             fontWeight = FontWeight.Bold,
                             fontSize = 48.sp,
-                            color = if (copiedCode) NEON_LIME else NEON_CYAN,
+                            color = codeTextColor,
                             letterSpacing = 12.sp,
                         )
                     }
 
-                    Spacer(modifier = Modifier.height(12.dp))
+                    Spacer(modifier = Modifier.height(14.dp))
 
                     Text(
                         text = if (copiedCode) "COPIED TO CLIPBOARD!" else "CLICK CODE TO COPY",
                         fontFamily = gameFont,
-                        fontSize = 12.sp,
+                        fontSize = 16.sp,
                         fontWeight = FontWeight.Bold,
-                        color = if (copiedCode) NEON_LIME else NEON_CYAN.copy(alpha = 0.8f),
+                        color = feedbackColor,
                     )
 
                     Spacer(modifier = Modifier.height(8.dp))
@@ -250,38 +269,40 @@ fun MultiplayerLobby(
                     Text(
                         text = "SHARE THIS CODE WITH YOUR OPPONENT",
                         fontFamily = gameFont,
-                        fontSize = 11.sp,
+                        fontSize = 14.sp,
                         color = DIM_TEXT,
                     )
 
-                    Spacer(modifier = Modifier.height(16.dp))
+                    Spacer(modifier = Modifier.height(20.dp))
 
                     // Animated waiting indicator
                     val dots = ".".repeat(((frameCount * 0.5f).toInt() % 4))
                     Text(
                         text = "PLAYERS CONNECTED: ${connector.connectedPlayers}/4$dots",
                         fontFamily = gameFont,
-                        fontSize = 14.sp,
+                        fontSize = 18.sp,
+                        fontWeight = FontWeight.Bold,
                         color = NEON_CYAN,
                     )
 
                     Spacer(modifier = Modifier.height(24.dp))
 
                     // Player slots
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                         for (i in 0 until 4) {
                             val isConnected = i < connector.connectedPlayers
                             val color = if (isConnected) PLAYER_COLORS[i] else DIM_TEXT
                             Box(
                                 modifier = Modifier
-                                    .size(60.dp)
-                                    .border(1.dp, color, RoundedCornerShape(4.dp)),
+                                    .size(64.dp)
+                                    .border(1.5.dp, color, RoundedCornerShape(4.dp)),
                                 contentAlignment = Alignment.Center
                             ) {
                                 Text(
                                     text = "P${i + 1}",
                                     fontFamily = gameFont,
-                                    fontSize = 12.sp,
+                                    fontSize = 16.sp,
+                                    fontWeight = FontWeight.Bold,
                                     color = color
                                 )
                             }
@@ -298,7 +319,7 @@ fun MultiplayerLobby(
                         Text(
                             text = "NEED AT LEAST 2 PLAYERS",
                             fontFamily = gameFont,
-                            fontSize = 12.sp,
+                            fontSize = 16.sp,
                             color = DIM_TEXT,
                         )
                     }
@@ -309,10 +330,11 @@ fun MultiplayerLobby(
                     Text(
                         text = "ENTER ROOM CODE",
                         fontFamily = gameFont,
-                        fontSize = 14.sp,
+                        fontSize = 18.sp,
+                        fontWeight = FontWeight.Medium,
                         color = DIM_TEXT,
                     )
-                    Spacer(modifier = Modifier.height(12.dp))
+                    Spacer(modifier = Modifier.height(14.dp))
 
                     // Code input field
                     Box(
@@ -430,7 +452,7 @@ fun MultiplayerLobby(
                         Text(
                             text = "CLICK PASTE OR PRESS CTRL+V / CMD+V",
                             fontFamily = gameFont,
-                            fontSize = 11.sp,
+                            fontSize = 14.sp,
                             color = DIM_TEXT,
                         )
                     }
@@ -442,7 +464,8 @@ fun MultiplayerLobby(
                     Text(
                         text = "CONNECTING$dots",
                         fontFamily = gameFont,
-                        fontSize = 18.sp,
+                        fontSize = 20.sp,
+                        fontWeight = FontWeight.Bold,
                         color = NEON_PINK,
                     )
                 }
