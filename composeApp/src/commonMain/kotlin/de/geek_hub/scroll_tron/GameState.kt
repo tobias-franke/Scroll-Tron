@@ -14,6 +14,7 @@ data class GameState(
     val angularVelocity: Float,     // weighty steering — decays each frame
     val trail: MutableList<LineSegment>,
     val isDead: Boolean,
+    val isBot: Boolean = false,
 )
 
 // ---------------------------------------------------------------------------

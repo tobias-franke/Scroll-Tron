@@ -102,7 +102,7 @@ private fun segmentsIntersect(
 const val GAME_WIDTH = 3200f
 const val GAME_HEIGHT = 1800f
 
-private fun mpInitialState(numPlayers: Int): MultiplayerGameState {
+internal fun mpInitialState(numPlayers: Int, aiCount: Int = 0): MultiplayerGameState {
     val gridStep = 60f
     val w = GAME_WIDTH
     val h = GAME_HEIGHT
@@ -114,6 +114,7 @@ private fun mpInitialState(numPlayers: Int): MultiplayerGameState {
         Point(w * 0.5f, h * 0.75f) to (-kotlin.math.PI / 2).toFloat(), // P4: bottom quarter, up
     )
 
+    val botStartIndex = numPlayers - aiCount
     val players = (0 until numPlayers).map { i ->
         val (pos, angle) = startPositions[i]
         GameState(
@@ -124,7 +125,8 @@ private fun mpInitialState(numPlayers: Int): MultiplayerGameState {
             angle = angle,
             angularVelocity = 0f,
             trail = mutableListOf(),
-            isDead = false
+            isDead = false,
+            isBot = i >= botStartIndex,
         )
     }
 
@@ -230,7 +232,7 @@ private fun stepMultiplayerPredicted(
 // Full multiplayer step (host-authoritative)
 // ---------------------------------------------------------------------------
 
-private fun stepMultiplayer(
+internal fun stepMultiplayer(
     state: MultiplayerGameState,
 ): MultiplayerGameState {
     if (state.winner != null) return state
@@ -335,7 +337,8 @@ private fun stateToSyncData(state: MultiplayerGameState): GameSyncData {
                 y = p.position.y,
                 angle = p.angle,
                 angVel = p.angularVelocity,
-                isDead = p.isDead
+                isDead = p.isDead,
+                isBot = p.isBot,
             )
         }
     )
@@ -355,7 +358,8 @@ private fun MultiplayerGameState.applySyncData(data: GameSyncData): MultiplayerG
             position = newPos,
             angle = pData.angle,
             angularVelocity = pData.angVel,
-            isDead = pData.isDead
+            isDead = pData.isDead,
+            isBot = pData.isBot,
         )
     }
 
@@ -380,6 +384,7 @@ private fun MultiplayerGameState.applySyncData(data: GameSyncData): MultiplayerG
 fun MultiplayerGame(
     connector: MultiplayerConnector,
     isHost: Boolean,
+    aiCount: Int = 0,
     onBack: () -> Unit,
 ) {
     var myPlayerIndex by remember { mutableStateOf(if (isHost) 0 else -1) }
@@ -402,7 +407,8 @@ fun MultiplayerGame(
 
     LaunchedEffect(Unit) {
         if (isHost) {
-            mpState = mpInitialState(connector.connectedPlayers)
+            val totalPlayers = minOf(4, connector.connectedPlayers + aiCount)
+            mpState = mpInitialState(totalPlayers, aiCount)
             connector.sendGameStart(GAME_WIDTH, GAME_HEIGHT)
             gameStarted = true
         }
@@ -451,7 +457,8 @@ fun MultiplayerGame(
                                 angle = p.angle,
                                 angularVelocity = p.angVel,
                                 trail = mutableListOf(),
-                                isDead = p.isDead
+                                isDead = p.isDead,
+                                isBot = p.isBot,
                             )
                         }
                     )
@@ -467,16 +474,17 @@ fun MultiplayerGame(
 
         connector.onRematchReceived { playerIndex ->
             readyPlayers = readyPlayers + playerIndex
-            if (isHost && readyPlayers.size == mpState.players.size) {
+            val humanIndices = mpState.players.indices.filter { !mpState.players[it].isBot }
+            if (isHost && humanIndices.isNotEmpty() && humanIndices.all { readyPlayers.contains(it) }) {
                 // Everyone is ready, start!
-                mpState = mpInitialState(mpState.players.size)
+                mpState = mpInitialState(mpState.players.size, aiCount)
                 readyPlayers = emptySet()
                 connector.sendGameStart(GAME_WIDTH, GAME_HEIGHT)
             }
         }
     }
 
-    // Game loop (host runs physics, guest predicts locally)
+    // Game loop (host runs physics and steers bots, guest predicts locally)
     LaunchedEffect(gameStarted) {
         if (!gameStarted) return@LaunchedEffect
         var lastFrame = 0L
@@ -487,8 +495,28 @@ fun MultiplayerGame(
                 if (elapsed >= 14L && !connectionLost) {
                     lastFrame = nanos
                     if (isHost) {
+                        // Steer AI bots before stepping physics
+                        var stateWithAi = mpState
+                        if (stateWithAi.winner == null) {
+                            val updatedPlayers = stateWithAi.players.toMutableList()
+                            var changed = false
+                            for (i in updatedPlayers.indices) {
+                                val p = updatedPlayers[i]
+                                if (p.isBot && !p.isDead) {
+                                    val impulse = computeAiSteering(i, stateWithAi)
+                                    if (impulse != 0f) {
+                                        updatedPlayers[i] = p.copy(angularVelocity = p.angularVelocity + impulse)
+                                        changed = true
+                                    }
+                                }
+                            }
+                            if (changed) {
+                                stateWithAi = stateWithAi.copy(players = updatedPlayers)
+                            }
+                        }
+
                         // Host steps physics (authoritative)
-                        mpState = stepMultiplayer(mpState)
+                        mpState = stepMultiplayer(stateWithAi)
 
                         // Send state sync to guest
                         syncCounter++
@@ -514,9 +542,10 @@ fun MultiplayerGame(
         if (!readyPlayers.contains(myPlayerIndex)) {
             readyPlayers = readyPlayers + myPlayerIndex
             connector.sendRematch()
-            if (isHost && readyPlayers.size == mpState.players.size) {
+            val humanIndices = mpState.players.indices.filter { !mpState.players[it].isBot }
+            if (isHost && humanIndices.isNotEmpty() && humanIndices.all { readyPlayers.contains(it) }) {
                 // Everyone is ready, start!
-                mpState = mpInitialState(mpState.players.size)
+                mpState = mpInitialState(mpState.players.size, aiCount)
                 readyPlayers = emptySet()
                 connector.sendGameStart(GAME_WIDTH, GAME_HEIGHT)
             }
@@ -599,7 +628,11 @@ fun MultiplayerGame(
                     mpState.players.forEachIndexed { i, player ->
                         val isMe = i == myPlayerIndex
                         val colorName = PLAYER_COLOR_NAMES.getOrNull(i) ?: "P${i+1}"
-                        val label = if (isMe) "$colorName (YOU)" else colorName
+                        val label = when {
+                            isMe -> "$colorName (YOU)"
+                            player.isBot -> "$colorName [BOT]"
+                            else -> colorName
+                        }
                         val color = PLAYER_COLORS[i % PLAYER_COLORS.size]
                         val style = TextStyle(
                             fontSize = 30.sp,
@@ -616,10 +649,13 @@ fun MultiplayerGame(
                     if (mpState.winner != null || connectionLost) {
                         drawRect(Color(0xCC000000), size = Size(GAME_WIDTH, GAME_HEIGHT))
 
+                        val winnerPlayer = mpState.winner?.let { mpState.players.getOrNull(it.ordinal) }
+                        val winnerColorName = mpState.winner?.let { PLAYER_COLOR_NAMES.getOrNull(it.ordinal) } ?: "OPPONENT"
                         val title = when {
                             connectionLost -> "CONNECTION LOST"
                             mpState.winner == myPlayerId -> "YOU WIN"
-                            mpState.winner != null -> "${PLAYER_COLOR_NAMES.getOrNull(mpState.winner!!.ordinal) ?: "OPPONENT"} WINS"
+                            winnerPlayer?.isBot == true -> "$winnerColorName [BOT] WINS"
+                            mpState.winner != null -> "$winnerColorName WINS"
                             else -> "GAME OVER"
                         }
                         val titleColor = if (connectionLost) Color(0xFFFFCC00)
@@ -681,9 +717,10 @@ fun MultiplayerGame(
                     ) {
                         // Rematch button (only if not disconnected)
                         if (!connectionLost) {
+                            val humanCount = maxOf(1, mpState.players.count { !it.isBot })
                             val isReady = readyPlayers.contains(myPlayerIndex)
                             val rematchColor = if (isReady) Color(0xFFAAAAAA) else NEON_LIME
-                            val rematchText = if (isReady) "WAITING (${readyPlayers.size}/${mpState.players.size})" else "REMATCH"
+                            val rematchText = if (isReady) "WAITING (${readyPlayers.size}/$humanCount)" else "REMATCH"
                             Box(
                                 modifier = Modifier
                                     .border(

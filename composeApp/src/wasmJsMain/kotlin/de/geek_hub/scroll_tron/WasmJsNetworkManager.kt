@@ -40,7 +40,7 @@ internal external fun getJsString(obj: JsAny, key: String): String?
 @JsFun("function(obj, key) { return obj[key]; }")
 internal external fun getJsFloat(obj: JsAny, key: String): Float
 
-@JsFun("function(obj, key) { return obj[key]; }")
+@JsFun("function(obj, key) { return Boolean(obj[key]); }")
 internal external fun getJsBoolean(obj: JsAny, key: String): Boolean
 
 @JsFun("function(obj, key) { return obj[key]; }")
@@ -257,6 +257,7 @@ class WasmJsNetworkManager {
             setJsFloat(pObj, "angle", p.angle)
             setJsFloat(pObj, "angVel", p.angVel)
             setJsBoolean(pObj, "isDead", p.isDead)
+            setJsBoolean(pObj, "isBot", p.isBot)
             pushJsArray(playersArr, pObj)
         }
         

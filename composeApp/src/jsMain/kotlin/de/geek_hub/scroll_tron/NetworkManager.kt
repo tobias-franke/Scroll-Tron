@@ -214,6 +214,7 @@ class NetworkManager {
             pObj.angle = p.angle
             pObj.angVel = p.angVel
             pObj.isDead = p.isDead
+            pObj.isBot = p.isBot
             pObj
         }.toTypedArray()
         msg.timestamp = window.performance.now()

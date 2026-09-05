@@ -62,7 +62,8 @@ class JsMultiplayerConnector : MultiplayerConnector() {
                             y = (p.y as Number).toFloat(),
                             angle = (p.angle as Number).toFloat(),
                             angVel = (p.angVel as Number).toFloat(),
-                            isDead = p.isDead as Boolean
+                            isDead = p.isDead as Boolean,
+                            isBot = (p.isBot as? Boolean) ?: false,
                         )
                     }
                     gameSyncCallback?.invoke(GameSyncData(players))

@@ -71,7 +71,8 @@ class WasmJsMultiplayerConnector : MultiplayerConnector() {
                                 y = getJsFloat(pObj, "y"),
                                 angle = getJsFloat(pObj, "angle"),
                                 angVel = getJsFloat(pObj, "angVel"),
-                                isDead = getJsBoolean(pObj, "isDead")
+                                isDead = getJsBoolean(pObj, "isDead"),
+                                isBot = getJsBoolean(pObj, "isBot")
                             )
                         )
                     }

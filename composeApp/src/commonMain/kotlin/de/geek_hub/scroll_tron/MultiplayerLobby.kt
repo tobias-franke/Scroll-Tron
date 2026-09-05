@@ -51,7 +51,7 @@ private val DIM_TEXT    = Color(0xFFCCCCCC)
 @Composable
 fun MultiplayerLobby(
     onBack: () -> Unit,
-    onGameReady: (connector: MultiplayerConnector, isHost: Boolean) -> Unit,
+    onGameReady: (connector: MultiplayerConnector, isHost: Boolean, aiCount: Int) -> Unit,
 ) {
     val gameFont = FontFamily(
         Font(Res.font.orbitron_regular, FontWeight.Normal),
@@ -64,6 +64,7 @@ fun MultiplayerLobby(
     var joinCode  by remember { mutableStateOf("") }
     var errorMsg  by remember { mutableStateOf<String?>(null) }
     var copiedCode by remember { mutableStateOf(false) }
+    var aiCount   by remember { mutableStateOf(0) }
     val focusRequester = remember { FocusRequester() }
 
     LaunchedEffect(lobbyMode) {
@@ -116,7 +117,7 @@ fun MultiplayerLobby(
     // Auto-transition to game when connected (GUEST ONLY)
     LaunchedEffect(connState) {
         if (connState == LobbyConnectionState.Connected && lobbyMode == LobbyMode.Join) {
-            onGameReady(connector, false)
+            onGameReady(connector, false, 0)
         }
     }
 
@@ -168,7 +169,7 @@ fun MultiplayerLobby(
             Spacer(modifier = Modifier.height(48.dp))
 
             Box(
-                modifier = Modifier.height(390.dp),
+                modifier = Modifier.heightIn(min = 390.dp),
                 contentAlignment = Alignment.Center,
             ) {
                 when {
@@ -285,34 +286,99 @@ fun MultiplayerLobby(
 
                             Spacer(modifier = Modifier.height(24.dp))
 
+                            val maxBots = maxOf(0, 4 - connector.connectedPlayers)
+                            val effectiveAiCount = minOf(aiCount, maxBots)
+                            if (effectiveAiCount != aiCount) {
+                                aiCount = effectiveAiCount
+                            }
+                            val totalPlayers = connector.connectedPlayers + aiCount
+
+                            val countHeader = if (aiCount > 0) {
+                                "PLAYERS ($totalPlayers/4) • $aiCount BOT${if (aiCount > 1) "S" else ""}"
+                            } else {
+                                "PLAYERS ($totalPlayers/4)"
+                            }
+
                             Text(
-                                text = "PLAYERS (${connector.connectedPlayers}/4)",
+                                text = countHeader,
                                 fontFamily = gameFont,
                                 fontSize = 18.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = NEON_CYAN,
                             )
 
-                            Spacer(modifier = Modifier.height(16.dp))
+                            Spacer(modifier = Modifier.height(14.dp))
 
                             // Player slots
                             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                                 for (i in 0 until 4) {
-                                    val isConnected = i < connector.connectedPlayers
-                                    val color = if (isConnected) PLAYER_COLORS[i] else DIM_TEXT
+                                    val isHuman = i < connector.connectedPlayers
+                                    val isBot = !isHuman && i < totalPlayers
+                                    val isEmpty = i >= totalPlayers
+                                    val color = when {
+                                        isHuman || isBot -> PLAYER_COLORS[i]
+                                        else -> DIM_TEXT.copy(alpha = 0.35f)
+                                    }
+                                    val slotClickable = isBot || (isEmpty && totalPlayers < 4)
+
                                     Box(
                                         modifier = Modifier
-                                            .size(64.dp)
-                                            .border(1.5.dp, color, RoundedCornerShape(4.dp)),
+                                            .width(68.dp)
+                                            .height(72.dp)
+                                            .border(1.5.dp, color, RoundedCornerShape(6.dp))
+                                            .clickable(enabled = slotClickable) {
+                                                if (isBot) {
+                                                    aiCount = maxOf(0, aiCount - 1)
+                                                } else if (isEmpty && totalPlayers < 4) {
+                                                    aiCount++
+                                                }
+                                            }
+                                            .pointerHoverIcon(if (slotClickable) PointerIcon.Hand else PointerIcon.Default),
                                         contentAlignment = Alignment.Center
                                     ) {
-                                        Text(
-                                            text = "P${i + 1}",
-                                            fontFamily = gameFont,
-                                            fontSize = 16.sp,
-                                            fontWeight = FontWeight.Bold,
-                                            color = color
-                                        )
+                                        Column(
+                                            horizontalAlignment = Alignment.CenterHorizontally,
+                                            verticalArrangement = Arrangement.Center,
+                                        ) {
+                                            val topText = when {
+                                                isEmpty -> "+"
+                                                else -> "P${i + 1}"
+                                            }
+                                            val bottomText = when {
+                                                i == 0 -> "YOU"
+                                                isBot || isEmpty -> "BOT"
+                                                else -> "GUEST"
+                                            }
+
+                                            Box(
+                                                modifier = Modifier.height(26.dp),
+                                                contentAlignment = Alignment.Center,
+                                            ) {
+                                                Text(
+                                                    text = topText,
+                                                    fontFamily = gameFont,
+                                                    fontSize = 18.sp,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = color,
+                                                )
+                                            }
+
+                                            Spacer(modifier = Modifier.height(2.dp))
+
+                                            Box(
+                                                modifier = Modifier.height(16.dp),
+                                                contentAlignment = Alignment.Center,
+                                            ) {
+                                                Text(
+                                                    text = bottomText,
+                                                    fontFamily = gameFont,
+                                                    fontSize = 12.sp,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = if (i == 0) color.copy(alpha = 0.85f) else color,
+                                                    letterSpacing = 1.sp,
+                                                )
+                                            }
+                                        }
                                     }
                                 }
                             }
@@ -323,9 +389,9 @@ fun MultiplayerLobby(
                                 modifier = Modifier.height(52.dp),
                                 contentAlignment = Alignment.Center,
                             ) {
-                                if (connector.connectedPlayers >= 2) {
+                                if (totalPlayers >= 2) {
                                     LobbyButton("START GAME", NEON_LIME, gameFont) {
-                                        onGameReady(connector, true)
+                                        onGameReady(connector, true, aiCount)
                                     }
                                 } else {
                                     val dots = ".".repeat(((frameCount * 0.5f).toInt() % 4))
@@ -547,3 +613,4 @@ private fun LobbyButton(
         )
     }
 }
+
