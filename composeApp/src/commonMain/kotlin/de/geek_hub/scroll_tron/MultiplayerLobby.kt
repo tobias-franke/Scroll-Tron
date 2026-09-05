@@ -28,6 +28,7 @@ import org.jetbrains.compose.resources.Font
 import scrolltron.composeapp.generated.resources.Res
 import scrolltron.composeapp.generated.resources.orbitron_bold
 import scrolltron.composeapp.generated.resources.orbitron_regular
+import kotlinx.coroutines.delay
 import kotlin.math.sin
 
 // ---------------------------------------------------------------------------
@@ -60,11 +61,36 @@ fun MultiplayerLobby(
     var connState by remember { mutableStateOf(LobbyConnectionState.Idle) }
     var joinCode  by remember { mutableStateOf("") }
     var errorMsg  by remember { mutableStateOf<String?>(null) }
+    var copiedCode by remember { mutableStateOf(false) }
     val focusRequester = remember { FocusRequester() }
 
     LaunchedEffect(lobbyMode) {
+        copiedCode = false
         if (lobbyMode == LobbyMode.Join) {
             focusRequester.requestFocus()
+        }
+    }
+
+    LaunchedEffect(copiedCode) {
+        if (copiedCode) {
+            delay(2000)
+            copiedCode = false
+        }
+    }
+
+    DisposableEffect(lobbyMode, connState) {
+        if (lobbyMode == LobbyMode.Join && connState == LobbyConnectionState.Idle) {
+            val unregister = registerClipboardPasteListener { pasted ->
+                val code = sanitizeRoomCode(pasted)
+                if (code.isNotEmpty()) {
+                    joinCode = code
+                }
+            }
+            onDispose {
+                unregister()
+            }
+        } else {
+            onDispose {}
         }
     }
 
@@ -189,7 +215,14 @@ fun MultiplayerLobby(
                     // Big room code display
                     Box(
                         modifier = Modifier
-                            .border(2.dp, NEON_CYAN.copy(alpha = 0.5f), RoundedCornerShape(8.dp))
+                            .border(2.dp, if (copiedCode) NEON_LIME else NEON_CYAN.copy(alpha = 0.5f), RoundedCornerShape(8.dp))
+                            .clickable {
+                                if (connector.roomCode.isNotEmpty()) {
+                                    copyToClipboard(connector.roomCode)
+                                    copiedCode = true
+                                }
+                            }
+                            .pointerHoverIcon(PointerIcon.Hand)
                             .padding(horizontal = 32.dp, vertical = 16.dp),
                     ) {
                         Text(
@@ -197,12 +230,22 @@ fun MultiplayerLobby(
                             fontFamily = gameFont,
                             fontWeight = FontWeight.Bold,
                             fontSize = 48.sp,
-                            color = NEON_CYAN,
+                            color = if (copiedCode) NEON_LIME else NEON_CYAN,
                             letterSpacing = 12.sp,
                         )
                     }
 
-                    Spacer(modifier = Modifier.height(24.dp))
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    Text(
+                        text = if (copiedCode) "COPIED TO CLIPBOARD!" else "CLICK CODE TO COPY",
+                        fontFamily = gameFont,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = if (copiedCode) NEON_LIME else NEON_CYAN.copy(alpha = 0.8f),
+                    )
+
+                    Spacer(modifier = Modifier.height(8.dp))
 
                     Text(
                         text = "SHARE THIS CODE WITH YOUR OPPONENT",
@@ -275,6 +318,8 @@ fun MultiplayerLobby(
                     Box(
                         modifier = Modifier
                             .border(2.dp, NEON_PINK.copy(alpha = 0.5f), RoundedCornerShape(8.dp))
+                            .clickable { focusRequester.requestFocus() }
+                            .pointerHoverIcon(PointerIcon.Text)
                             .padding(horizontal = 32.dp, vertical = 16.dp),
                         contentAlignment = Alignment.Center,
                     ) {
@@ -283,19 +328,27 @@ fun MultiplayerLobby(
                             modifier = Modifier
                                 .focusRequester(focusRequester)
                                 .onKeyEvent { event ->
-                                    if (event.type == KeyEventType.KeyDown && event.key == Key.Enter) {
-                                        if (joinCode.length == 4) {
-                                            connector.joinGame(joinCode)
+                                    if (event.type == KeyEventType.KeyDown) {
+                                        if (event.key == Key.Enter) {
+                                            if (joinCode.length == 4) {
+                                                connector.joinGame(joinCode)
+                                                true
+                                            } else false
+                                        } else if ((event.isCtrlPressed || event.isMetaPressed) && event.key == Key.V) {
+                                            getFromClipboard { text ->
+                                                if (!text.isNullOrBlank()) {
+                                                    val code = sanitizeRoomCode(text)
+                                                    if (code.isNotEmpty()) {
+                                                        joinCode = code
+                                                    }
+                                                }
+                                            }
                                             true
                                         } else false
                                     } else false
                                 },
                             onValueChange = { newValue ->
-                                // Only allow valid characters, max 4
-                                val filtered = newValue.uppercase()
-                                    .filter { it in "ABCDEFGHJKLMNPQRSTUVWXYZ23456789" }
-                                    .take(4)
-                                joinCode = filtered
+                                joinCode = sanitizeRoomCode(newValue)
                             },
                             textStyle = TextStyle(
                                 fontSize = 48.sp,
@@ -330,12 +383,56 @@ fun MultiplayerLobby(
                         )
                     }
 
-                    Spacer(modifier = Modifier.height(24.dp))
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    // Paste / Clear buttons
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        LobbyButton(
+                            text = "PASTE",
+                            color = NEON_PINK,
+                            gameFont = gameFont,
+                            modifier = Modifier.width(if (joinCode.isNotEmpty()) 134.dp else 280.dp),
+                        ) {
+                            getFromClipboard { text ->
+                                if (!text.isNullOrBlank()) {
+                                    val code = sanitizeRoomCode(text)
+                                    if (code.isNotEmpty()) {
+                                        joinCode = code
+                                    }
+                                }
+                            }
+                            focusRequester.requestFocus()
+                        }
+
+                        if (joinCode.isNotEmpty()) {
+                            LobbyButton(
+                                text = "CLEAR",
+                                color = DIM_TEXT,
+                                gameFont = gameFont,
+                                modifier = Modifier.width(134.dp),
+                            ) {
+                                joinCode = ""
+                                focusRequester.requestFocus()
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(16.dp))
 
                     if (joinCode.length == 4) {
                         LobbyButton("CONNECT", NEON_LIME, gameFont) {
                             connector.joinGame(joinCode)
                         }
+                    } else {
+                        Text(
+                            text = "CLICK PASTE OR PRESS CTRL+V / CMD+V",
+                            fontFamily = gameFont,
+                            fontSize = 11.sp,
+                            color = DIM_TEXT,
+                        )
                     }
                 }
 
@@ -364,6 +461,11 @@ fun MultiplayerLobby(
     }
 }
 
+internal fun sanitizeRoomCode(raw: String): String {
+    val clean = raw.trim().uppercase().removePrefix("STRON-")
+    return clean.filter { it in "ABCDEFGHJKLMNPQRSTUVWXYZ23456789" }.take(4)
+}
+
 private val PLAYER_COLORS = listOf(
     Color(0xFF00FFFF),  // Cyan
     Color(0xFFFF00FF),  // Pink
@@ -382,15 +484,15 @@ private fun LobbyButton(
     text: String,
     color: Color,
     gameFont: FontFamily,
+    modifier: Modifier = Modifier.width(280.dp),
     onClick: () -> Unit,
 ) {
     Box(
-        modifier = Modifier
-            .width(280.dp)
+        modifier = modifier
             .border(1.dp, color.copy(alpha = 0.7f), RoundedCornerShape(4.dp))
             .clickable(onClick = onClick)
             .pointerHoverIcon(PointerIcon.Hand)
-            .padding(horizontal = 36.dp, vertical = 16.dp),
+            .padding(horizontal = 24.dp, vertical = 14.dp),
         contentAlignment = Alignment.Center,
     ) {
         Text(
