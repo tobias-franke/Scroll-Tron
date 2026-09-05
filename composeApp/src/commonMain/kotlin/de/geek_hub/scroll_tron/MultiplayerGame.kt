@@ -40,6 +40,8 @@ import scrolltron.composeapp.generated.resources.orbitron_bold
 import scrolltron.composeapp.generated.resources.orbitron_regular
 import kotlin.math.abs
 import kotlin.math.cos
+import kotlin.math.max
+import kotlin.math.min
 import kotlin.math.sin
 
 // ---------------------------------------------------------------------------
@@ -65,6 +67,18 @@ private fun segmentsIntersect(
     p1: Point, p2: Point,
     q1: Point, q2: Point,
 ): Boolean {
+    val pMinX = if (p1.x < p2.x) p1.x else p2.x
+    val pMaxX = if (p1.x > p2.x) p1.x else p2.x
+    val qMinX = if (q1.x < q2.x) q1.x else q2.x
+    val qMaxX = if (q1.x > q2.x) q1.x else q2.x
+    if (pMaxX < qMinX - 1e-4f || pMinX > qMaxX + 1e-4f) return false
+
+    val pMinY = if (p1.y < p2.y) p1.y else p2.y
+    val pMaxY = if (p1.y > p2.y) p1.y else p2.y
+    val qMinY = if (q1.y < q2.y) q1.y else q2.y
+    val qMaxY = if (q1.y > q2.y) q1.y else q2.y
+    if (pMaxY < qMinY - 1e-4f || pMinY > qMaxY + 1e-4f) return false
+
     val rx = p2.x - p1.x;  val ry = p2.y - p1.y
     val sx = q2.x - q1.x;  val sy = q2.y - q1.y
     val denom = cross(rx, ry, sx, sy)
@@ -74,18 +88,8 @@ private fun segmentsIntersect(
         // Parallel or collinear
         if (abs(cross(dx, dy, rx, ry)) < 1e-6f) {
             // Collinear: Check bounding box overlap
-            val pMinX = kotlin.math.min(p1.x, p2.x)
-            val pMaxX = kotlin.math.max(p1.x, p2.x)
-            val qMinX = kotlin.math.min(q1.x, q2.x)
-            val qMaxX = kotlin.math.max(q1.x, q2.x)
-            
-            val pMinY = kotlin.math.min(p1.y, p2.y)
-            val pMaxY = kotlin.math.max(p1.y, p2.y)
-            val qMinY = kotlin.math.min(q1.y, q2.y)
-            val qMaxY = kotlin.math.max(q1.y, q2.y)
-            
-            return kotlin.math.max(pMinX, qMinX) <= kotlin.math.min(pMaxX, qMaxX) + 1e-4f &&
-                   kotlin.math.max(pMinY, qMinY) <= kotlin.math.min(pMaxY, qMaxY) + 1e-4f
+            return max(pMinX, qMinX) <= min(pMaxX, qMaxX) + 1e-4f &&
+                   max(pMinY, qMinY) <= min(pMaxY, qMaxY) + 1e-4f
         }
         return false
     }
@@ -143,6 +147,8 @@ internal fun mpInitialState(numPlayers: Int, aiCount: Int = 0): MultiplayerGameS
 private fun stepPlayer(
     state: GameState,
     allTrails: List<List<LineSegment>>,
+    playerIndex: Int = -1,
+    grid: SpatialGrid? = null,
 ): GameState {
     if (state.isDead) return state
 
@@ -156,41 +162,75 @@ private fun stepPlayer(
 
     val newSegment = LineSegment(oldPos, newPos)
     state.trail.add(newSegment)
+    val segIdx = state.trail.lastIndex
 
     // Wall collision
     val wallHit = newPos.x < 0 || newPos.x > GAME_WIDTH ||
                   newPos.y < 0 || newPos.y > GAME_HEIGHT
 
-    // Self-collision
-    var selfHit = false
-    val endIdx = state.trail.size - SKIP_SEGMENTS - 1
-    for (i in 0..endIdx) {
-        val seg = state.trail[i]
-        if (segmentsIntersect(newSegment.start, newSegment.end, seg.start, seg.end)) {
-            selfHit = true
-            break
-        }
-    }
+    var collision = false
+    if (!wallHit) {
+        if (grid != null && playerIndex >= 0) {
+            val sMinX = min(newSegment.start.x, newSegment.end.x)
+            val sMaxX = max(newSegment.start.x, newSegment.end.x)
+            val sMinY = min(newSegment.start.y, newSegment.end.y)
+            val sMaxY = max(newSegment.start.y, newSegment.end.y)
 
-    // Cross-player collision (hit any trail)
-    var crossHit = false
-    for (trail in allTrails) {
-        if (trail === state.trail) continue // skip own trail (handled by self-collision)
-        for (i in 0 until trail.size) {
-            val seg = trail[i]
-            if (segmentsIntersect(newSegment.start, newSegment.end, seg.start, seg.end)) {
-                crossHit = true
-                break
+            val cMinX = (sMinX / grid.cellSize).toInt().coerceIn(0, grid.cols - 1)
+            val cMaxX = (sMaxX / grid.cellSize).toInt().coerceIn(0, grid.cols - 1)
+            val cMinY = (sMinY / grid.cellSize).toInt().coerceIn(0, grid.rows - 1)
+            val cMaxY = (sMaxY / grid.cellSize).toInt().coerceIn(0, grid.rows - 1)
+
+            val selfSafeLimit = segIdx - SKIP_SEGMENTS
+
+            outer@ for (cy in cMinY..cMaxY) {
+                val offset = cy * grid.cols
+                for (cx in cMinX..cMaxX) {
+                    val cell = grid.cells[offset + cx]
+                    for (k in cell.indices) {
+                        val item = cell[k]
+                        if (item.playerIndex == playerIndex && item.segmentIndex >= selfSafeLimit) {
+                            continue
+                        }
+                        if (segmentsIntersect(newSegment.start, newSegment.end, item.seg.start, item.seg.end)) {
+                            collision = true
+                            break@outer
+                        }
+                    }
+                }
+            }
+            grid.addSegment(newSegment, playerIndex, segIdx)
+        } else {
+            // Fallback trail checking
+            val endIdx = state.trail.size - SKIP_SEGMENTS - 1
+            for (i in 0..endIdx) {
+                val seg = state.trail[i]
+                if (segmentsIntersect(newSegment.start, newSegment.end, seg.start, seg.end)) {
+                    collision = true
+                    break
+                }
+            }
+            if (!collision) {
+                for (trail in allTrails) {
+                    if (trail === state.trail) continue
+                    for (i in 0 until trail.size) {
+                        val seg = trail[i]
+                        if (segmentsIntersect(newSegment.start, newSegment.end, seg.start, seg.end)) {
+                            collision = true
+                            break
+                        }
+                    }
+                    if (collision) break
+                }
             }
         }
-        if (crossHit) break
     }
 
     return state.copy(
         position = newPos,
         angle = newAngle,
         angularVelocity = newAngVel,
-        isDead = wallHit || selfHit || crossHit,
+        isDead = wallHit || collision,
     )
 }
 
@@ -234,11 +274,12 @@ private fun stepMultiplayerPredicted(
 
 internal fun stepMultiplayer(
     state: MultiplayerGameState,
+    grid: SpatialGrid? = null,
 ): MultiplayerGameState {
     if (state.winner != null) return state
 
     val allTrails = state.players.map { it.trail }
-    val newPlayers = state.players.map { stepPlayer(it, allTrails) }
+    val newPlayers = state.players.mapIndexed { i, p -> stepPlayer(p, allTrails, i, grid) }
 
     // Determine winner
     val aliveIndices = newPlayers.indices.filter { !newPlayers[it].isDead }
@@ -284,15 +325,7 @@ private fun DrawScope.drawBorder() {
     )
 }
 
-private fun DrawScope.drawTrail(trail: List<LineSegment>, trailColor: Color) {
-    if (trail.isEmpty()) return
-
-    val path = Path()
-    path.moveTo(trail[0].start.x, trail[0].start.y)
-    for (i in trail.indices) {
-        path.lineTo(trail[i].end.x, trail[i].end.y)
-    }
-
+private fun DrawScope.drawTrail(path: Path, trailColor: Color) {
     drawPath(
         path = path,
         color = trailColor.copy(alpha = 0.35f),
@@ -394,6 +427,16 @@ fun MultiplayerGame(
     var isLeaving by remember { mutableStateOf(false) }
     var connectionLost by remember { mutableStateOf(false) }
 
+    val spatialGrid = remember { SpatialGrid() }
+    val trailPaths = remember { mutableMapOf<Int, Path>() }
+    val trailPathLengths = remember { mutableMapOf<Int, Int>() }
+
+    val resetRoundResources = {
+        spatialGrid.clear()
+        trailPaths.clear()
+        trailPathLengths.clear()
+    }
+
     // Sync counter — send full state every N frames (host only)
     var syncCounter by remember { mutableStateOf(0) }
     val syncInterval = 1  // host sends syncs every frame
@@ -408,6 +451,7 @@ fun MultiplayerGame(
     LaunchedEffect(Unit) {
         if (isHost) {
             val totalPlayers = minOf(4, connector.connectedPlayers + aiCount)
+            resetRoundResources()
             mpState = mpInitialState(totalPlayers, aiCount)
             connector.sendGameStart(GAME_WIDTH, GAME_HEIGHT)
             gameStarted = true
@@ -426,6 +470,7 @@ fun MultiplayerGame(
             if (!isHost) {
                 // Guest received start signal from host
                 myPlayerIndex = playerIndex
+                resetRoundResources()
                 // Reset local state. By clearing players, we force the next GameSync to re-initialize them with empty trails.
                 readyPlayers = emptySet()
                 mpState = mpState.copy(winner = null, players = emptyList())
@@ -477,6 +522,7 @@ fun MultiplayerGame(
             val humanIndices = mpState.players.indices.filter { !mpState.players[it].isBot }
             if (isHost && humanIndices.isNotEmpty() && humanIndices.all { readyPlayers.contains(it) }) {
                 // Everyone is ready, start!
+                resetRoundResources()
                 mpState = mpInitialState(mpState.players.size, aiCount)
                 readyPlayers = emptySet()
                 connector.sendGameStart(GAME_WIDTH, GAME_HEIGHT)
@@ -488,26 +534,30 @@ fun MultiplayerGame(
     LaunchedEffect(gameStarted) {
         if (!gameStarted) return@LaunchedEffect
         var lastFrame = 0L
+        var frameCount = 0L
         while (isActive) {
             withFrameNanos { nanos ->
                 if (lastFrame == 0L) { lastFrame = nanos; return@withFrameNanos }
                 val elapsed = (nanos - lastFrame) / 1_000_000L
                 if (elapsed >= 14L && !connectionLost) {
                     lastFrame = nanos
+                    frameCount++
                     if (isHost) {
                         // Steer AI bots before stepping physics
                         var stateWithAi = mpState
                         if (stateWithAi.winner == null) {
                             val updatedPlayers = stateWithAi.players.toMutableList()
                             var changed = false
-                            for (i in updatedPlayers.indices) {
-                                val p = updatedPlayers[i]
-                                if (p.isBot && !p.isDead) {
-                                    val impulse = computeAiSteering(i, stateWithAi)
-                                    if (impulse != 0f) {
-                                        updatedPlayers[i] = p.copy(angularVelocity = p.angularVelocity + impulse)
-                                        changed = true
-                                    }
+                            val aliveBotIndices = updatedPlayers.indices.filter { updatedPlayers[it].isBot && !updatedPlayers[it].isDead }
+                            for (botIdx in aliveBotIndices) {
+                                val shouldEvaluate = aliveBotIndices.size <= 1 || ((frameCount + botIdx) % 2L == 0L)
+                                val p = updatedPlayers[botIdx]
+                                val impulse = if (shouldEvaluate) {
+                                    computeAiSteering(botIdx, stateWithAi, grid = spatialGrid)
+                                } else 0f
+                                if (impulse != 0f) {
+                                    updatedPlayers[botIdx] = p.copy(angularVelocity = p.angularVelocity + impulse)
+                                    changed = true
                                 }
                             }
                             if (changed) {
@@ -516,7 +566,7 @@ fun MultiplayerGame(
                         }
 
                         // Host steps physics (authoritative)
-                        mpState = stepMultiplayer(stateWithAi)
+                        mpState = stepMultiplayer(stateWithAi, spatialGrid)
 
                         // Send state sync to guest
                         syncCounter++
@@ -545,6 +595,7 @@ fun MultiplayerGame(
             val humanIndices = mpState.players.indices.filter { !mpState.players[it].isBot }
             if (isHost && humanIndices.isNotEmpty() && humanIndices.all { readyPlayers.contains(it) }) {
                 // Everyone is ready, start!
+                resetRoundResources()
                 mpState = mpInitialState(mpState.players.size, aiCount)
                 readyPlayers = emptySet()
                 connector.sendGameStart(GAME_WIDTH, GAME_HEIGHT)
@@ -613,7 +664,28 @@ fun MultiplayerGame(
                 if (gameStarted) {
                     mpState.players.forEachIndexed { i, player ->
                         val color = PLAYER_COLORS[i % PLAYER_COLORS.size]
-                        drawTrail(player.trail, color)
+                        val trail = player.trail
+                        val cachedPath = trailPaths.getOrPut(i) { Path() }
+                        val lastLen = trailPathLengths[i] ?: 0
+
+                        if (trail.isEmpty()) {
+                            cachedPath.reset()
+                            trailPathLengths[i] = 0
+                        } else if (lastLen == 0 || lastLen > trail.size) {
+                            cachedPath.reset()
+                            cachedPath.moveTo(trail[0].start.x, trail[0].start.y)
+                            for (s in trail) {
+                                cachedPath.lineTo(s.end.x, s.end.y)
+                            }
+                            trailPathLengths[i] = trail.size
+                        } else if (lastLen < trail.size) {
+                            for (k in lastLen until trail.size) {
+                                cachedPath.lineTo(trail[k].end.x, trail[k].end.y)
+                            }
+                            trailPathLengths[i] = trail.size
+                        }
+
+                        drawTrail(cachedPath, color)
                         if (!player.isDead) {
                             val angleDeg = (player.angle * (180.0 / kotlin.math.PI)).toFloat()
                             drawHead(player.position, angleDeg, color)
