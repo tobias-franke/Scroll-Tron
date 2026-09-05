@@ -215,4 +215,53 @@ class AiPlayerTest {
         assertFalse(state.players[0].isDead, "Lime bot should survive head-on approach")
         assertFalse(state.players[1].isDead, "Yellow bot should survive head-on approach")
     }
+
+    @Test
+    fun testSpatialGrid_accuracyAndRaycast() {
+        val grid = SpatialGrid(3200f, 1800f, 200f)
+        val seg1 = LineSegment(Point(1600f, 700f), Point(1600f, 900f))
+        grid.addSegment(seg1, playerIndex = 1, segmentIndex = 0)
+
+        // Ray from (1600, 500) heading down (+y) towards segment at y=700
+        val dist = raycastClearanceGrid(
+            origin = Point(1600f, 500f),
+            angle = (PI / 2).toFloat(),
+            maxDist = 600f,
+            grid = grid,
+            botIndex = 0,
+            botSafeLimit = -1,
+        )
+        assertEquals(200f, dist, 0.01f)
+    }
+
+    @Test
+    fun testLongRunningSimulation_performanceWithSpatialGrid() {
+        // 4 players (1 human, 3 bots)
+        var state = mpInitialState(numPlayers = 4, aiCount = 3)
+        val grid = SpatialGrid()
+
+        // Run 600 frames (~10 seconds of simulated 60 FPS gameplay, generating thousands of segments)
+        for (frame in 0 until 600) {
+            val updatedPlayers = state.players.toMutableList()
+            val aliveBots = updatedPlayers.indices.filter { updatedPlayers[it].isBot && !updatedPlayers[it].isDead }
+            for (botIdx in aliveBots) {
+                // Stagger bots like in game loop
+                val shouldEvaluate = aliveBots.size <= 1 || ((frame + botIdx) % 2 == 0)
+                if (shouldEvaluate) {
+                    val impulse = computeAiSteering(botIdx, state, grid = grid)
+                    if (impulse != 0f) {
+                        updatedPlayers[botIdx] = updatedPlayers[botIdx].copy(
+                            angularVelocity = updatedPlayers[botIdx].angularVelocity + impulse
+                        )
+                    }
+                }
+            }
+            state = stepMultiplayer(state.copy(players = updatedPlayers), grid)
+            if (state.winner != null) break
+        }
+
+        // Verify simulation completed cleanly without exception
+        assertTrue(state.players.isNotEmpty())
+    }
 }
+
