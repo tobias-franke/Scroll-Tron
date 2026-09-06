@@ -55,6 +55,9 @@ internal external fun consoleLog(message: String)
 @JsFun("function(obj) { return obj.type ? obj.type.toString() : obj.toString(); }")
 internal external fun getErrorString(obj: JsAny): String
 
+@JsFun("(conn, delay) => { setTimeout(() => { try { conn.close(); } catch (e) {} }, delay); }")
+private external fun closeConnectionDelayed(conn: JsDataConnection, delay: Int)
+
 object MessageType {
     const val GAME_START   = "gameStart"
     const val PLAYER_INPUT = "playerInput"
@@ -183,12 +186,14 @@ class WasmJsNetworkManager {
         peer!!.on("error") { errAny ->
             val errStr = if (errAny != null) getErrorString(errAny) else "Unknown error"
             consoleLog("PeerJS guest error: $errStr")
-            errorMessage = if (errStr == "peer-unavailable") {
-                "Room '$roomCode' not found. Please check the code."
-            } else {
-                "Connection error: $errStr"
+            if (state != ConnectionState.Error) {
+                errorMessage = if (errStr == "peer-unavailable") {
+                    "Room '$roomCode' not found. Please check the code."
+                } else {
+                    "Connection error: $errStr"
+                }
+                updateState(ConnectionState.Error)
             }
-            updateState(ConnectionState.Error)
         }
     }
 
@@ -209,7 +214,7 @@ class WasmJsNetworkManager {
                 } catch (t: Throwable) {
                     consoleLog("Failed to send rejection message: ${t.message}")
                 }
-                try { conn.close() } catch (_: Throwable) {}
+                closeConnectionDelayed(conn, 500)
             }
         }
         conn.on("open") { _ ->
@@ -287,7 +292,10 @@ class WasmJsNetworkManager {
                 onPlayerDisconnected?.invoke(playerIndex)
                 if (!isGameStarted && connections.isEmpty()) updateState(ConnectionState.WaitingForGuest)
             } else {
-                updateState(ConnectionState.Idle)
+                if (state != ConnectionState.Error && state != ConnectionState.Idle) {
+                    errorMessage = errorMessage ?: "Connection closed by host."
+                    updateState(ConnectionState.Error)
+                }
             }
         }
 
@@ -298,8 +306,10 @@ class WasmJsNetworkManager {
                 connections.remove(playerIndex)
                 onPlayerDisconnected?.invoke(playerIndex)
             } else {
-                errorMessage = "Data channel error: $errStr"
-                updateState(ConnectionState.Error)
+                if (state != ConnectionState.Error) {
+                    errorMessage = "Data channel error: $errStr"
+                    updateState(ConnectionState.Error)
+                }
             }
         }
     }

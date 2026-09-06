@@ -143,14 +143,16 @@ class NetworkManager {
 
         peer!!.on("error") { err ->
             console.log("PeerJS guest error: $err")
-            val errType = err?.type?.toString()
-            errorMessage = if (errType == "peer-unavailable") {
-                "Room '$roomCode' not found. Please check the code."
-            } else {
-                val detail = errType ?: err?.message?.toString() ?: err?.toString() ?: "Unknown error"
-                "Connection error: $detail"
+            if (state != ConnectionState.Error) {
+                val errType = err?.type?.toString()
+                errorMessage = if (errType == "peer-unavailable") {
+                    "Room '$roomCode' not found. Please check the code."
+                } else {
+                    val detail = errType ?: err?.message?.toString() ?: err?.toString() ?: "Unknown error"
+                    "Connection error: $detail"
+                }
+                updateState(ConnectionState.Error)
             }
-            updateState(ConnectionState.Error)
         }
     }
 
@@ -171,7 +173,9 @@ class NetworkManager {
                 } catch (t: Throwable) {
                     console.log("Failed to send rejection message: ${t.message}")
                 }
-                try { conn.close() } catch (_: Throwable) {}
+                window.setTimeout({
+                    try { conn.close() } catch (_: Throwable) {}
+                }, 500)
             }
         }
         conn.on("open") { _ ->
@@ -247,7 +251,10 @@ class NetworkManager {
                 onPlayerDisconnected?.invoke(playerIndex)
                 if (!isGameStarted && connections.isEmpty()) updateState(ConnectionState.WaitingForGuest)
             } else {
-                updateState(ConnectionState.Idle)
+                if (state != ConnectionState.Error && state != ConnectionState.Idle) {
+                    errorMessage = errorMessage ?: "Connection closed by host."
+                    updateState(ConnectionState.Error)
+                }
             }
         }
 
@@ -257,8 +264,10 @@ class NetworkManager {
                 connections.remove(playerIndex)
                 onPlayerDisconnected?.invoke(playerIndex)
             } else {
-                errorMessage = "Data channel error: $err"
-                updateState(ConnectionState.Error)
+                if (state != ConnectionState.Error) {
+                    errorMessage = "Data channel error: $err"
+                    updateState(ConnectionState.Error)
+                }
             }
         }
     }

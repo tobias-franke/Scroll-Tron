@@ -200,7 +200,9 @@ fun MultiplayerLobby(
                             LobbyButton("RETRY", NEON_CYAN, gameFont) {
                                 connector.disconnect()
                                 connState = LobbyConnectionState.Idle
-                                lobbyMode = null
+                                if (lobbyMode != LobbyMode.Join) {
+                                    lobbyMode = null
+                                }
                             }
                         }
                     }
@@ -451,6 +453,7 @@ fun MultiplayerLobby(
                                                             val code = sanitizeRoomCode(text)
                                                             if (code.isNotEmpty()) {
                                                                 joinCode = code
+                                                                errorMsg = null
                                                             }
                                                         }
                                                     }
@@ -460,6 +463,7 @@ fun MultiplayerLobby(
                                         },
                                     onValueChange = { newValue ->
                                         joinCode = sanitizeRoomCode(newValue)
+                                        errorMsg = null
                                     },
                                     textStyle = TextStyle(
                                         fontSize = 48.sp,
@@ -512,6 +516,7 @@ fun MultiplayerLobby(
                                             val code = sanitizeRoomCode(text)
                                             if (code.isNotEmpty()) {
                                                 joinCode = code
+                                                errorMsg = null
                                             }
                                         }
                                     }
@@ -526,6 +531,7 @@ fun MultiplayerLobby(
                                         modifier = Modifier.width(134.dp),
                                     ) {
                                         joinCode = ""
+                                        errorMsg = null
                                         focusRequester.requestFocus()
                                     }
                                 }
@@ -539,9 +545,20 @@ fun MultiplayerLobby(
                             ) {
                                 if (joinCode.length == 4) {
                                     LobbyButton("CONNECT", NEON_LIME, gameFont) {
+                                        errorMsg = null
                                         connector.joinGame(joinCode)
                                     }
                                 }
+                            }
+
+                            if (!errorMsg.isNullOrBlank()) {
+                                Spacer(modifier = Modifier.height(16.dp))
+                                Text(
+                                    text = errorMsg ?: "",
+                                    fontFamily = gameFont,
+                                    fontSize = 15.sp,
+                                    color = Color(0xFFFF3333),
+                                )
                             }
                         }
                     }
