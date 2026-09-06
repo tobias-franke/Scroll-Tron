@@ -13,6 +13,7 @@ import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.*
@@ -42,6 +43,7 @@ import kotlin.math.abs
 import kotlin.math.cos
 import kotlin.math.max
 import kotlin.math.min
+import kotlin.math.roundToInt
 import kotlin.math.sin
 
 // ---------------------------------------------------------------------------
@@ -56,6 +58,12 @@ private val PLAYER_COLORS = listOf(
 )
 private val PLAYER_COLOR_NAMES = listOf("CYAN", "PINK", "LIME", "YELLOW")
 private val NEON_LIME = Color(0xFF39FF14)
+
+internal fun format1Dec(v: Float): String {
+    val rounded10 = kotlin.math.round(kotlin.math.abs(v) * 10).toInt()
+    val sign = if (v < 0f && rounded10 > 0) "-" else ""
+    return "$sign${rounded10 / 10}.${rounded10 % 10}"
+}
 
 // ---------------------------------------------------------------------------
 // Collision helpers (same as singleplayer)
@@ -426,6 +434,9 @@ fun MultiplayerGame(
     var gameStarted by remember { mutableStateOf(false) }
     var isLeaving by remember { mutableStateOf(false) }
     var connectionLost by remember { mutableStateOf(false) }
+    var fps by remember { mutableStateOf(60) }
+    var tps by remember { mutableStateOf(60) }
+    var showDebugOverlay by remember { mutableStateOf(true) }
 
     val spatialGrid = remember { SpatialGrid() }
     val trailPaths = remember { mutableMapOf<Int, Path>() }
@@ -535,13 +546,29 @@ fun MultiplayerGame(
         if (!gameStarted) return@LaunchedEffect
         var lastFrame = 0L
         var frameCount = 0L
+        var lastStatNanos = 0L
+        var frameCounter = 0
+        var tickCounter = 0
         while (isActive) {
             withFrameNanos { nanos ->
+                if (lastStatNanos == 0L) lastStatNanos = nanos
+                frameCounter++
+                val statElapsed = nanos - lastStatNanos
+                if (statElapsed >= 500_000_000L) {
+                    val sec = statElapsed / 1_000_000_000.0
+                    fps = (frameCounter / sec).roundToInt()
+                    tps = (tickCounter / sec).roundToInt()
+                    frameCounter = 0
+                    tickCounter = 0
+                    lastStatNanos = nanos
+                }
+
                 if (lastFrame == 0L) { lastFrame = nanos; return@withFrameNanos }
                 val elapsed = (nanos - lastFrame) / 1_000_000L
                 if (elapsed >= 14L && !connectionLost) {
                     lastFrame = nanos
                     frameCount++
+                    tickCounter++
                     if (isHost) {
                         // Steer AI bots before stepping physics
                         var stateWithAi = mpState
@@ -620,6 +647,10 @@ fun MultiplayerGame(
                         true
                     }
                     Key.R -> if (mpState.winner != null) { doRematch(); true } else false
+                    Key.F3, Key.D -> {
+                        showDebugOverlay = !showDebugOverlay
+                        true
+                    }
                     else -> false
                 }
             }
@@ -750,6 +781,106 @@ fun MultiplayerGame(
                                 GAME_HEIGHT / 2f - titleMeasured.size.height / 2f - 50f,
                             ),
                         )
+                    }
+
+                    // Debug overlay HUD (top-right)
+                    if (showDebugOverlay) {
+                        val myPlayer = mpState.players.getOrNull(if (myPlayerIndex in mpState.players.indices) myPlayerIndex else 0)
+                        val angVel = myPlayer?.angularVelocity ?: 0f
+                        val degPerSec = angVel * (180f / kotlin.math.PI.toFloat()) * tps
+                        val linearSpeedSec = (SPEED * tps).roundToInt()
+                        val totalSegs = mpState.players.sumOf { it.trail.size }
+                        val botCount = mpState.players.count { it.isBot }
+                        val aliveBots = mpState.players.count { it.isBot && !it.isDead }
+
+                        val fpsColor = when {
+                            fps >= 55 -> Color(0xFF39FF14)
+                            fps >= 30 -> Color(0xFFFFCC00)
+                            else -> Color(0xFFFF3333)
+                        }
+                        val tpsColor = when {
+                            tps >= 55 -> Color(0xFF39FF14)
+                            tps >= 30 -> Color(0xFFFFCC00)
+                            else -> Color(0xFFFF3333)
+                        }
+
+                        val headerStyle = TextStyle(
+                            fontSize = 24.sp,
+                            fontWeight = FontWeight.Bold,
+                            fontFamily = gameFont,
+                            color = Color(0xFF00FFCC),
+                        )
+                        val labelStyle = TextStyle(
+                            fontSize = 20.sp,
+                            fontWeight = FontWeight.Normal,
+                            fontFamily = FontFamily.Monospace,
+                            color = Color(0xFF88AA99),
+                        )
+
+                        class StatEntry(val label: String, val value: String, val valueColor: Color)
+                        val statList = mutableListOf(
+                            StatEntry("FPS", "$fps", fpsColor),
+                            StatEntry("TPS", "$tps", tpsColor),
+                            StatEntry("SPEED", "$linearSpeedSec px/s (3.0 px/t)", Color(0xFFE0FFEE)),
+                            StatEntry("ANG VEL", "${format1Dec(angVel)} rad/t (${format1Dec(degPerSec)}°/s)", Color(0xFFE0FFEE)),
+                            StatEntry("TRAILS", "$totalSegs segs", Color(0xFFE0FFEE)),
+                        )
+                        if (botCount > 0) {
+                            statList.add(StatEntry("BOTS", "$aliveBots/$botCount alive", Color(0xFFE0FFEE)))
+                        }
+
+                        val headerMeasured = textMeasurer.measure("DEBUG STATS [F3 / D]", headerStyle)
+                        val measuredEntries = statList.map { entry ->
+                            val labelM = textMeasurer.measure(entry.label.padEnd(9), labelStyle)
+                            val valueM = textMeasurer.measure(entry.value, labelStyle.copy(color = entry.valueColor))
+                            Triple(labelM, valueM, labelM.size.width + valueM.size.width)
+                        }
+
+                        val maxContentWidth = maxOf(
+                            headerMeasured.size.width.toFloat(),
+                            (measuredEntries.maxOfOrNull { it.third } ?: 0).toFloat()
+                        )
+                        val boxPadding = 24f
+                        val panelWidth = maxOf(520f, maxContentWidth + boxPadding * 2)
+                        val lineHeight = 32f
+                        val panelHeight = boxPadding * 2 + headerMeasured.size.height + 16f + (statList.size * lineHeight)
+                        val panelX = GAME_WIDTH - pad - panelWidth
+                        val panelY = pad + topInset
+
+                        // Background panel
+                        drawRoundRect(
+                            color = Color(0xDD05100B),
+                            topLeft = Offset(panelX, panelY),
+                            size = Size(panelWidth, panelHeight),
+                            cornerRadius = CornerRadius(12f, 12f),
+                        )
+                        drawRoundRect(
+                            color = Color(0x6600FFCC),
+                            topLeft = Offset(panelX, panelY),
+                            size = Size(panelWidth, panelHeight),
+                            cornerRadius = CornerRadius(12f, 12f),
+                            style = Stroke(width = 2f),
+                        )
+
+                        // Title
+                        drawText(headerMeasured, topLeft = Offset(panelX + boxPadding, panelY + boxPadding))
+
+                        // Divider line
+                        val dividerY = panelY + boxPadding + headerMeasured.size.height + 8f
+                        drawLine(
+                            color = Color(0x4400FFCC),
+                            start = Offset(panelX + boxPadding, dividerY),
+                            end = Offset(panelX + panelWidth - boxPadding, dividerY),
+                            strokeWidth = 1.5f,
+                        )
+
+                        // Rows
+                        var textY = dividerY + 12f
+                        for ((labelM, valueM, _) in measuredEntries) {
+                            drawText(labelM, topLeft = Offset(panelX + boxPadding, textY))
+                            drawText(valueM, topLeft = Offset(panelX + boxPadding + labelM.size.width, textY))
+                            textY += lineHeight
+                        }
                     }
                 } else {
                     // Waiting for game start
