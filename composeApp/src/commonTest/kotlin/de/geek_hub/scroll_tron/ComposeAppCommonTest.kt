@@ -58,4 +58,31 @@ class ComposeAppCommonTest {
         assertEquals("0.0", format1Dec(-0.01f))
         assertEquals("180.0", format1Dec(180.0f))
     }
+
+    @Test
+    fun testMpInitialState_oneHostOneBot() {
+        val state = mpInitialState(numPlayers = 2, aiCount = 1)
+        assertEquals(2, state.players.size)
+        assertEquals(false, state.players[0].isBot)
+        assertEquals(true, state.players[1].isBot)
+    }
+
+    @Test
+    fun testMpInitialState_oneHostTwoBots() {
+        val state = mpInitialState(numPlayers = 3, aiCount = 2)
+        assertEquals(3, state.players.size)
+        assertEquals(false, state.players[0].isBot)
+        assertEquals(true, state.players[1].isBot)
+        assertEquals(true, state.players[2].isBot)
+    }
+
+    @Test
+    fun testMpInitialState_oneHostThreeBots() {
+        val state = mpInitialState(numPlayers = 4, aiCount = 3)
+        assertEquals(4, state.players.size)
+        assertEquals(false, state.players[0].isBot)
+        assertEquals(true, state.players[1].isBot)
+        assertEquals(true, state.players[2].isBot)
+        assertEquals(true, state.players[3].isBot)
+    }
 }

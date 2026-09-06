@@ -60,6 +60,21 @@ class JvmMultiplayerConnectorTest {
     }
 
     @Test
+    fun testSendGameStartTransitionsToConnected() {
+        val connector = createMultiplayerConnector()
+        connector.hostGame()
+        assertEquals(LobbyConnectionState.WaitingForGuest, connector.state)
+
+        var stateChanged: LobbyConnectionState? = null
+        connector.onStateChanged { stateChanged = it }
+
+        connector.sendGameStart(3200f, 1800f)
+        assertEquals(LobbyConnectionState.Connected, connector.state)
+        assertEquals(LobbyConnectionState.Connected, stateChanged)
+        assertEquals(1, connector.connectedPlayers)
+    }
+
+    @Test
     fun testIsMultiplayerSupportedOnJvm() {
         assertTrue(isMultiplayerSupported())
     }

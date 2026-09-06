@@ -519,7 +519,7 @@ fun MultiplayerGame(
 
     LaunchedEffect(Unit) {
         if (isHost) {
-            val totalPlayers = minOf(4, connector.connectedPlayers + aiCount)
+            val totalPlayers = minOf(4, maxOf(1, connector.connectedPlayers) + aiCount)
             resetRoundResources()
             mpState = mpInitialState(totalPlayers, aiCount)
             connector.sendGameStart(GAME_WIDTH, GAME_HEIGHT)

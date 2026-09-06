@@ -114,9 +114,12 @@ fun MultiplayerLobby(
         }
     }
 
+    var isStartingGame by remember { mutableStateOf(false) }
+
     // Auto-transition to game when connected (GUEST ONLY)
     LaunchedEffect(connState) {
         if (connState == LobbyConnectionState.Connected && lobbyMode == LobbyMode.Join) {
+            isStartingGame = true
             onGameReady(connector, false, 0)
         }
     }
@@ -124,7 +127,7 @@ fun MultiplayerLobby(
     // Cleanup on dispose
     DisposableEffect(Unit) {
         onDispose {
-            if (connState != LobbyConnectionState.Connected) {
+            if (!isStartingGame && connState != LobbyConnectionState.Connected) {
                 connector.disconnect()
             }
         }
@@ -391,6 +394,7 @@ fun MultiplayerLobby(
                             ) {
                                 if (totalPlayers >= 2) {
                                     LobbyButton("START GAME", NEON_LIME, gameFont) {
+                                        isStartingGame = true
                                         onGameReady(connector, true, aiCount)
                                     }
                                 } else {

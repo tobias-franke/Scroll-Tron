@@ -80,7 +80,8 @@ class JvmMultiplayerConnector : MultiplayerConnector() {
     // -----------------------------------------------------------------------
 
     override fun sendGameStart(canvasWidth: Float, canvasHeight: Float) {
-        // Local host drives game state directly
+        state = LobbyConnectionState.Connected
+        stateCallback?.invoke(state)
     }
 
     override fun sendPlayerInput(playerIndex: Int, angularVelocity: Float) {
