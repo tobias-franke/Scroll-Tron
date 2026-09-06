@@ -599,11 +599,12 @@ fun MultiplayerGame(
 
         connector.onRematchReceived { playerIndex ->
             readyPlayers = readyPlayers + playerIndex
-            val humanIndices = mpState.players.indices.filter { !mpState.players[it].isBot }
-            if (isHost && humanIndices.isNotEmpty() && humanIndices.all { readyPlayers.contains(it) }) {
+            val requiredIndices = if (isHost) connector.connectedPlayerIndices else mpState.players.indices.filter { !mpState.players[it].isBot }.toSet()
+            if (isHost && requiredIndices.isNotEmpty() && requiredIndices.all { readyPlayers.contains(it) }) {
                 // Everyone is ready, start!
                 resetRoundResources()
-                mpState = mpInitialState(mpState.players.size, aiCount)
+                val totalPlayers = minOf(4, maxOf(1, connector.connectedPlayers) + aiCount)
+                mpState = mpInitialState(totalPlayers, aiCount)
                 readyPlayers = emptySet()
                 connectionLost = false
                 roundId++
@@ -737,11 +738,12 @@ fun MultiplayerGame(
         if (!readyPlayers.contains(myPlayerIndex)) {
             readyPlayers = readyPlayers + myPlayerIndex
             connector.sendRematch()
-            val humanIndices = mpState.players.indices.filter { !mpState.players[it].isBot }
-            if (isHost && humanIndices.isNotEmpty() && humanIndices.all { readyPlayers.contains(it) }) {
+            val requiredIndices = if (isHost) connector.connectedPlayerIndices else mpState.players.indices.filter { !mpState.players[it].isBot }.toSet()
+            if (isHost && requiredIndices.isNotEmpty() && requiredIndices.all { readyPlayers.contains(it) }) {
                 // Everyone is ready, start!
                 resetRoundResources()
-                mpState = mpInitialState(mpState.players.size, aiCount)
+                val totalPlayers = minOf(4, maxOf(1, connector.connectedPlayers) + aiCount)
+                mpState = mpInitialState(totalPlayers, aiCount)
                 readyPlayers = emptySet()
                 connectionLost = false
                 roundId++
@@ -1027,23 +1029,44 @@ fun MultiplayerGame(
                     }
                 } else {
                     // Waiting for game start
-                    val waitText = "WAITING FOR GAME START..."
-                    val waitMeasured = textMeasurer.measure(
-                        waitText,
-                        TextStyle(
-                            fontSize = 45.sp,
-                            fontWeight = FontWeight.Bold,
-                            fontFamily = gameFont,
-                            color = PLAYER_COLORS[0],
-                        ),
-                    )
-                    drawText(
-                        waitMeasured,
-                        topLeft = Offset(
-                            GAME_WIDTH / 2f - waitMeasured.size.width / 2f,
-                            GAME_HEIGHT / 2f - waitMeasured.size.height / 2f,
-                        ),
-                    )
+                    if (connectionLost) {
+                        drawRect(Color(0xCC000000), size = Size(GAME_WIDTH, GAME_HEIGHT))
+                        val errText = connector.errorMessage ?: "Lost connection to host."
+                        val errMeasured = textMeasurer.measure(
+                            errText,
+                            TextStyle(
+                                fontSize = 36.sp,
+                                fontWeight = FontWeight.Bold,
+                                fontFamily = gameFont,
+                                color = Color(0xFFFF3333),
+                            ),
+                        )
+                        drawText(
+                            errMeasured,
+                            topLeft = Offset(
+                                GAME_WIDTH / 2f - errMeasured.size.width / 2f,
+                                GAME_HEIGHT / 2f - errMeasured.size.height / 2f,
+                            ),
+                        )
+                    } else {
+                        val waitText = "WAITING FOR GAME START..."
+                        val waitMeasured = textMeasurer.measure(
+                            waitText,
+                            TextStyle(
+                                fontSize = 45.sp,
+                                fontWeight = FontWeight.Bold,
+                                fontFamily = gameFont,
+                                color = PLAYER_COLORS[0],
+                            ),
+                        )
+                        drawText(
+                            waitMeasured,
+                            topLeft = Offset(
+                                GAME_WIDTH / 2f - waitMeasured.size.width / 2f,
+                                GAME_HEIGHT / 2f - waitMeasured.size.height / 2f,
+                            ),
+                        )
+                    }
                 }
                     }
                 }
@@ -1061,9 +1084,9 @@ fun MultiplayerGame(
                     Row(
                         horizontalArrangement = Arrangement.spacedBy(16.dp),
                     ) {
-                        // Rematch button (only if not disconnected)
-                        if (!connectionLost) {
-                            val humanCount = maxOf(1, mpState.players.count { !it.isBot })
+                        // Rematch button (only if not disconnected and game was started)
+                        if (!connectionLost && gameStarted) {
+                            val humanCount = if (isHost) connector.connectedPlayerIndices.size else maxOf(1, mpState.players.count { !it.isBot })
                             val isReady = readyPlayers.contains(myPlayerIndex)
                             val rematchColor = if (isReady) Color(0xFFAAAAAA) else NEON_LIME
                             val rematchText = if (isReady) "WAITING (${readyPlayers.size}/$humanCount)" else "REMATCH"

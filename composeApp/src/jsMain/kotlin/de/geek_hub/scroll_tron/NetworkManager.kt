@@ -17,6 +17,7 @@ object MessageType {
     const val GAME_OVER    = "gameOver"
     const val REMATCH      = "rematch"
     const val REJECTED     = "rejected"
+    const val ACCEPTED     = "accepted"
 }
 
 // ---------------------------------------------------------------------------
@@ -55,6 +56,9 @@ class NetworkManager {
 
     val numConnections: Int
         get() = connections.values.count { it.open }
+
+    val connectedIndices: Set<Int>
+        get() = setOf(0) + connections.filter { it.value.open }.keys
 
     // Callbacks set by the lobby/game composables
     var onStateChanged: ((ConnectionState) -> Unit)? = null
@@ -183,13 +187,22 @@ class NetworkManager {
     }
 
     private fun setupDataConnection(conn: JsDataConnection, playerIndex: Int) {
-        conn.on("open") { _ ->
+        val handleOpen: () -> Unit = {
             console.log("Data channel open with peer: ${conn.peer} (Player $playerIndex)")
             if (playerIndex != -1) {
                 connections[playerIndex] = conn
+                val acceptMsg = js("{}")
+                acceptMsg.type = MessageType.ACCEPTED
+                acceptMsg.playerIndex = playerIndex
+                try { conn.send(acceptMsg) } catch (t: Throwable) {
+                    console.log("Failed to send accepted message: ${t.message}")
+                }
+                updateState(ConnectionState.Connected)
             }
-            updateState(ConnectionState.Connected)
+            // For guests (playerIndex == -1): stay in Connecting until ACCEPTED or REJECTED is received!
         }
+        conn.on("open") { _ -> handleOpen() }
+        if (conn.open) { handleOpen() }
 
         conn.on("data") { data ->
             val type = data.type?.toString() ?: return@on
@@ -201,6 +214,12 @@ class NetworkManager {
                 updateState(ConnectionState.Error)
                 try { hostConnection?.close() } catch (_: Throwable) {}
                 hostConnection = null
+                return@on
+            }
+
+            if (playerIndex == -1 && type == MessageType.ACCEPTED) {
+                console.log("Guest connection accepted by host as Player ${data.playerIndex}")
+                updateState(ConnectionState.Connected)
                 return@on
             }
 

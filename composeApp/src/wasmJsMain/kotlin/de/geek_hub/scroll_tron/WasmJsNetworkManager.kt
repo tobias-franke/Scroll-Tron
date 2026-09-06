@@ -62,6 +62,7 @@ object MessageType {
     const val GAME_OVER    = "gameOver"
     const val REMATCH      = "rematch"
     const val REJECTED     = "rejected"
+    const val ACCEPTED     = "accepted"
 }
 
 enum class ConnectionState {
@@ -88,6 +89,9 @@ class WasmJsNetworkManager {
 
     val numConnections: Int
         get() = connections.values.count { it.open }
+
+    val connectedIndices: Set<Int>
+        get() = setOf(0) + connections.filter { it.value.open }.keys
 
     val isGuest: Boolean
         get() = hostConnection != null
@@ -220,13 +224,22 @@ class WasmJsNetworkManager {
     }
 
     private fun setupDataConnection(conn: JsDataConnection, playerIndex: Int) {
-        conn.on("open") { _ ->
+        val handleOpen: () -> Unit = {
             consoleLog("Data channel open with peer: ${conn.peer} (Player $playerIndex)")
             if (playerIndex != -1) {
                 connections[playerIndex] = conn
+                val acceptMsg = createJsObject()
+                setJsString(acceptMsg, "type", MessageType.ACCEPTED)
+                setJsInt(acceptMsg, "playerIndex", playerIndex)
+                try { conn.send(acceptMsg) } catch (t: Throwable) {
+                    consoleLog("Failed to send accepted message: ${t.message}")
+                }
+                updateState(ConnectionState.Connected)
             }
-            updateState(ConnectionState.Connected)
+            // For guests (playerIndex == -1): stay in Connecting until ACCEPTED or REJECTED is received!
         }
+        conn.on("open") { _ -> handleOpen() }
+        if (conn.open) { handleOpen() }
 
         conn.on("data") { dataAny ->
             if (dataAny == null) return@on
@@ -239,6 +252,13 @@ class WasmJsNetworkManager {
                 updateState(ConnectionState.Error)
                 try { hostConnection?.close() } catch (_: Throwable) {}
                 hostConnection = null
+                return@on
+            }
+
+            if (playerIndex == -1 && type == MessageType.ACCEPTED) {
+                val idx = getJsInt(dataAny, "playerIndex")
+                consoleLog("Guest connection accepted by host as Player $idx")
+                updateState(ConnectionState.Connected)
                 return@on
             }
 
