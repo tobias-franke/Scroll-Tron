@@ -47,4 +47,15 @@ class ComposeAppCommonTest {
         assertEquals("", sanitizeRoomCode("   "))
         assertEquals("", sanitizeRoomCode("01IO"))
     }
+
+    @Test
+    fun testFormat1Dec() {
+        assertEquals("0.0", format1Dec(0.0f))
+        assertEquals("3.0", format1Dec(3.0f))
+        assertEquals("1.2", format1Dec(1.234f))
+        assertEquals("1.3", format1Dec(1.26f))
+        assertEquals("-0.5", format1Dec(-0.48f))
+        assertEquals("0.0", format1Dec(-0.01f))
+        assertEquals("180.0", format1Dec(180.0f))
+    }
 }

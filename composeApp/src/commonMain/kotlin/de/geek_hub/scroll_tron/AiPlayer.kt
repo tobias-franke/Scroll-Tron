@@ -32,7 +32,7 @@ data class SpatialSegment(
 class SpatialGrid(
     val arenaWidth: Float = GAME_WIDTH,
     val arenaHeight: Float = GAME_HEIGHT,
-    val cellSize: Float = 200f,
+    val cellSize: Float = 100f,
 ) {
     val cols = (arenaWidth / cellSize).toInt() + 1
     val rows = (arenaHeight / cellSize).toInt() + 1
@@ -169,59 +169,71 @@ fun raycastClearanceGrid(
         }
     }
 
-    // 2. Query spatial grid cells in ray bounding box
-    var rMinX = min(origin.x, origin.x + dirX * closest) - 1f
-    var rMaxX = max(origin.x, origin.x + dirX * closest) + 1f
-    var rMinY = min(origin.y, origin.y + dirY * closest) - 1f
-    var rMaxY = max(origin.y, origin.y + dirY * closest) + 1f
-
-    val cMinX = (rMinX / grid.cellSize).toInt().coerceIn(0, grid.cols - 1)
-    val cMaxX = (rMaxX / grid.cellSize).toInt().coerceIn(0, grid.cols - 1)
-    val cMinY = (rMinY / grid.cellSize).toInt().coerceIn(0, grid.rows - 1)
-    val cMaxY = (rMaxY / grid.cellSize).toInt().coerceIn(0, grid.rows - 1)
-
-    for (cy in cMinY..cMaxY) {
-        val offset = cy * grid.cols
-        for (cx in cMinX..cMaxX) {
-            val cell = grid.cells[offset + cx]
-            for (i in cell.indices) {
-                val item = cell[i]
-                if (item.playerIndex == botIndex && item.segmentIndex > botSafeLimit) continue
-                val seg = item.seg
-                val sMinX = min(seg.start.x, seg.end.x)
-                val sMaxX = max(seg.start.x, seg.end.x)
-                if (sMaxX < rMinX || sMinX > rMaxX) continue
-
-                val sMinY = min(seg.start.y, seg.end.y)
-                val sMaxY = max(seg.start.y, seg.end.y)
-                if (sMaxY < rMinY || sMinY > rMaxY) continue
-
-                val hit = testSegmentRay(seg, origin, dirX, dirY, closest)
-                if (hit < closest) {
-                    closest = hit
-                    rMinX = min(origin.x, origin.x + dirX * closest) - 1f
-                    rMaxX = max(origin.x, origin.x + dirX * closest) + 1f
-                    rMinY = min(origin.y, origin.y + dirY * closest) - 1f
-                    rMaxY = max(origin.y, origin.y + dirY * closest) + 1f
-                }
-            }
+    // 2. Dynamic extras (active opponent heads and projected trajectories)
+    for (i in extras.indices) {
+        val hit = testSegmentRay(extras[i], origin, dirX, dirY, closest)
+        if (hit < closest) {
+            closest = hit
         }
     }
 
-    // 3. Dynamic extras (active opponent heads and projected trajectories)
-    for (i in extras.indices) {
-        val seg = extras[i]
-        val sMinX = min(seg.start.x, seg.end.x)
-        val sMaxX = max(seg.start.x, seg.end.x)
-        if (sMaxX < rMinX || sMinX > rMaxX) continue
+    if (closest <= 1.0f) return closest
 
-        val sMinY = min(seg.start.y, seg.end.y)
-        val sMaxY = max(seg.start.y, seg.end.y)
-        if (sMaxY < rMinY || sMinY > rMaxY) continue
+    // 3. Fast 2D DDA grid ray marching (Amanatides & Woo)
+    val cSize = grid.cellSize
+    val startCx = (origin.x / cSize).toInt().coerceIn(0, grid.cols - 1)
+    val startCy = (origin.y / cSize).toInt().coerceIn(0, grid.rows - 1)
 
-        val hit = testSegmentRay(seg, origin, dirX, dirY, closest)
-        if (hit < closest) {
-            closest = hit
+    val stepX = if (dirX > 1e-6f) 1 else if (dirX < -1e-6f) -1 else 0
+    val stepY = if (dirY > 1e-6f) 1 else if (dirY < -1e-6f) -1 else 0
+
+    var tMaxX = if (stepX > 0) {
+        ((startCx + 1) * cSize - origin.x) / dirX
+    } else if (stepX < 0) {
+        (startCx * cSize - origin.x) / dirX
+    } else {
+        Float.MAX_VALUE
+    }
+
+    var tMaxY = if (stepY > 0) {
+        ((startCy + 1) * cSize - origin.y) / dirY
+    } else if (stepY < 0) {
+        (startCy * cSize - origin.y) / dirY
+    } else {
+        Float.MAX_VALUE
+    }
+
+    val tDeltaX = if (stepX != 0) abs(cSize / dirX) else Float.MAX_VALUE
+    val tDeltaY = if (stepY != 0) abs(cSize / dirY) else Float.MAX_VALUE
+
+    var cx = startCx
+    var cy = startCy
+
+    while (true) {
+        val cell = grid.cells[cy * grid.cols + cx]
+        for (i in cell.indices) {
+            val item = cell[i]
+            if (item.playerIndex == botIndex && item.segmentIndex > botSafeLimit) continue
+            val hit = testSegmentRay(item.seg, origin, dirX, dirY, closest)
+            if (hit < closest) {
+                closest = hit
+            }
+        }
+
+        // Distance along ray to exit this cell
+        val nextCellDist = if (tMaxX < tMaxY) tMaxX else tMaxY
+        if (nextCellDist >= closest) {
+            break
+        }
+
+        if (tMaxX < tMaxY) {
+            cx += stepX
+            if (cx < 0 || cx >= grid.cols) break
+            tMaxX += tDeltaX
+        } else {
+            cy += stepY
+            if (cy < 0 || cy >= grid.rows) break
+            tMaxY += tDeltaY
         }
     }
 
@@ -468,22 +480,41 @@ fun computeAiSteering(
     }
 
     val distCenter = cast(0f)
-    val distSlightL = cast(-0.20f)
-    val distSlightR = cast(0.20f)
-    val distAhead = minOf(distCenter, distSlightL, distSlightR)
+    val distAhead = if (distCenter < WARNING_DISTANCE) {
+        val distSlightL = cast(-0.20f)
+        val distSlightR = cast(0.20f)
+        minOf(distCenter, distSlightL, distSlightR)
+    } else {
+        distCenter
+    }
 
-    val leftFeeler1 = cast(-0.45f)
-    val leftFeeler2 = cast(-1.00f)
-    val leftFeeler3 = cast(-1.57f)
-    val scoreLeft = leftFeeler1 * 0.50f + leftFeeler2 * 0.35f + leftFeeler3 * 0.15f
+    var cachedScoreLeft = -1f
+    var cachedScoreRight = -1f
 
-    val rightFeeler1 = cast(0.45f)
-    val rightFeeler2 = cast(1.00f)
-    val rightFeeler3 = cast(1.57f)
-    val scoreRight = rightFeeler1 * 0.50f + rightFeeler2 * 0.35f + rightFeeler3 * 0.15f
+    fun getScoreLeft(): Float {
+        if (cachedScoreLeft < 0f) {
+            val leftFeeler1 = cast(-0.45f)
+            val leftFeeler2 = cast(-1.00f)
+            val leftFeeler3 = cast(-1.57f)
+            cachedScoreLeft = leftFeeler1 * 0.50f + leftFeeler2 * 0.35f + leftFeeler3 * 0.15f
+        }
+        return cachedScoreLeft
+    }
+
+    fun getScoreRight(): Float {
+        if (cachedScoreRight < 0f) {
+            val rightFeeler1 = cast(0.45f)
+            val rightFeeler2 = cast(1.00f)
+            val rightFeeler3 = cast(1.57f)
+            cachedScoreRight = rightFeeler1 * 0.50f + rightFeeler2 * 0.35f + rightFeeler3 * 0.15f
+        }
+        return cachedScoreRight
+    }
 
     // 1. Immediate Danger — obstacle straight ahead
     if (distAhead < DANGER_DISTANCE) {
+        val scoreLeft = getScoreLeft()
+        val scoreRight = getScoreRight()
         return if (abs(scoreLeft - scoreRight) < 20f) {
             // Very close call: maintain existing turn momentum, or default to right (starboard rule)
             if (bot.angularVelocity < -0.005f) -STEERING_SENSITIVITY
@@ -498,6 +529,8 @@ fun computeAiSteering(
 
     // 2. Approaching Obstacle — start turning toward greater open space
     if (distAhead < WARNING_DISTANCE) {
+        val scoreLeft = getScoreLeft()
+        val scoreRight = getScoreRight()
         return if (scoreLeft > scoreRight * 1.15f) {
             -STEERING_SENSITIVITY
         } else if (scoreRight > scoreLeft * 1.15f) {
@@ -523,9 +556,9 @@ fun computeAiSteering(
         while (angleDiff > kotlin.math.PI.toFloat()) angleDiff -= (2 * kotlin.math.PI).toFloat()
         while (angleDiff < -kotlin.math.PI.toFloat()) angleDiff += (2 * kotlin.math.PI).toFloat()
 
-        if (angleDiff > 0.15f && scoreRight > 100f) {
+        if (angleDiff > 0.15f && getScoreRight() > 100f) {
             return STEERING_SENSITIVITY
-        } else if (angleDiff < -0.15f && scoreLeft > 100f) {
+        } else if (angleDiff < -0.15f && getScoreLeft() > 100f) {
             -STEERING_SENSITIVITY
         }
     }

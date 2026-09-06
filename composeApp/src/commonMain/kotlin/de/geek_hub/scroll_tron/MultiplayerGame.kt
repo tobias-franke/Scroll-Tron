@@ -13,6 +13,7 @@ import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.*
@@ -42,6 +43,7 @@ import kotlin.math.abs
 import kotlin.math.cos
 import kotlin.math.max
 import kotlin.math.min
+import kotlin.math.roundToInt
 import kotlin.math.sin
 
 // ---------------------------------------------------------------------------
@@ -56,6 +58,12 @@ private val PLAYER_COLORS = listOf(
 )
 private val PLAYER_COLOR_NAMES = listOf("CYAN", "PINK", "LIME", "YELLOW")
 private val NEON_LIME = Color(0xFF39FF14)
+
+internal fun format1Dec(v: Float): String {
+    val rounded10 = kotlin.math.round(kotlin.math.abs(v) * 10).toInt()
+    val sign = if (v < 0f && rounded10 > 0) "-" else ""
+    return "$sign${rounded10 / 10}.${rounded10 % 10}"
+}
 
 // ---------------------------------------------------------------------------
 // Collision helpers (same as singleplayer)
@@ -409,6 +417,66 @@ private fun MultiplayerGameState.applySyncData(data: GameSyncData): MultiplayerG
 }
 
 // ---------------------------------------------------------------------------
+// Incrementally cached, simplified Skia trail paths
+// ---------------------------------------------------------------------------
+
+private class CachedTrailPath {
+    val path = Path()
+    var lastCommittedX = 0f
+    var lastCommittedY = 0f
+    var lastCommittedAngle = 0f
+    var segmentCount = 0
+
+    fun reset() {
+        path.reset()
+        lastCommittedX = 0f
+        lastCommittedY = 0f
+        lastCommittedAngle = 0f
+        segmentCount = 0
+    }
+
+    fun addSegment(seg: LineSegment, playerAngle: Float) {
+        if (segmentCount == 0) {
+            path.moveTo(seg.start.x, seg.start.y)
+            path.lineTo(seg.end.x, seg.end.y)
+            lastCommittedX = seg.end.x
+            lastCommittedY = seg.end.y
+            lastCommittedAngle = playerAngle
+            segmentCount = 1
+            return
+        }
+
+        val dx = seg.end.x - lastCommittedX
+        val dy = seg.end.y - lastCommittedY
+        val distSq = dx * dx + dy * dy
+
+        var angleDiff = abs(playerAngle - lastCommittedAngle)
+        if (angleDiff > kotlin.math.PI.toFloat()) {
+            angleDiff = (2 * kotlin.math.PI).toFloat() - angleDiff
+        }
+
+        // Commit a new vertex if:
+        // 1. Turned noticeably by >= ~2.6 degrees (0.045 rad)
+        // 2. Traveled >= 24px in a straight line (distSq >= 576f)
+        if (angleDiff >= 0.045f || distSq >= 576f) {
+            path.lineTo(seg.end.x, seg.end.y)
+            lastCommittedX = seg.end.x
+            lastCommittedY = seg.end.y
+            lastCommittedAngle = playerAngle
+        }
+        segmentCount++
+    }
+
+    fun finishTrail(lastPos: Point) {
+        if (segmentCount > 0 && (lastCommittedX != lastPos.x || lastCommittedY != lastPos.y)) {
+            path.lineTo(lastPos.x, lastPos.y)
+            lastCommittedX = lastPos.x
+            lastCommittedY = lastPos.y
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Multiplayer Game composable
 // ---------------------------------------------------------------------------
 
@@ -426,15 +494,16 @@ fun MultiplayerGame(
     var gameStarted by remember { mutableStateOf(false) }
     var isLeaving by remember { mutableStateOf(false) }
     var connectionLost by remember { mutableStateOf(false) }
+    var fps by remember { mutableStateOf(60) }
+    var tps by remember { mutableStateOf(60) }
+    var showDebugOverlay by remember { mutableStateOf(false) }
 
     val spatialGrid = remember { SpatialGrid() }
-    val trailPaths = remember { mutableMapOf<Int, Path>() }
-    val trailPathLengths = remember { mutableMapOf<Int, Int>() }
+    val trailCaches = remember { mutableMapOf<Int, CachedTrailPath>() }
 
     val resetRoundResources = {
         spatialGrid.clear()
-        trailPaths.clear()
-        trailPathLengths.clear()
+        trailCaches.clear()
     }
 
     // Sync counter — send full state every N frames (host only)
@@ -535,13 +604,29 @@ fun MultiplayerGame(
         if (!gameStarted) return@LaunchedEffect
         var lastFrame = 0L
         var frameCount = 0L
+        var lastStatNanos = 0L
+        var frameCounter = 0
+        var tickCounter = 0
         while (isActive) {
             withFrameNanos { nanos ->
+                if (lastStatNanos == 0L) lastStatNanos = nanos
+                frameCounter++
+                val statElapsed = nanos - lastStatNanos
+                if (statElapsed >= 500_000_000L) {
+                    val sec = statElapsed / 1_000_000_000.0
+                    fps = (frameCounter / sec).roundToInt()
+                    tps = (tickCounter / sec).roundToInt()
+                    frameCounter = 0
+                    tickCounter = 0
+                    lastStatNanos = nanos
+                }
+
                 if (lastFrame == 0L) { lastFrame = nanos; return@withFrameNanos }
                 val elapsed = (nanos - lastFrame) / 1_000_000L
                 if (elapsed >= 14L && !connectionLost) {
                     lastFrame = nanos
                     frameCount++
+                    tickCounter++
                     if (isHost) {
                         // Steer AI bots before stepping physics
                         var stateWithAi = mpState
@@ -549,8 +634,10 @@ fun MultiplayerGame(
                             val updatedPlayers = stateWithAi.players.toMutableList()
                             var changed = false
                             val aliveBotIndices = updatedPlayers.indices.filter { updatedPlayers[it].isBot && !updatedPlayers[it].isDead }
-                            for (botIdx in aliveBotIndices) {
-                                val shouldEvaluate = aliveBotIndices.size <= 1 || ((frameCount + botIdx) % 2L == 0L)
+                            val numAliveBots = aliveBotIndices.size
+                            for (k in aliveBotIndices.indices) {
+                                val botIdx = aliveBotIndices[k]
+                                val shouldEvaluate = numAliveBots <= 1 || (frameCount % numAliveBots == k.toLong())
                                 val p = updatedPlayers[botIdx]
                                 val impulse = if (shouldEvaluate) {
                                     computeAiSteering(botIdx, stateWithAi, grid = spatialGrid)
@@ -620,6 +707,10 @@ fun MultiplayerGame(
                         true
                     }
                     Key.R -> if (mpState.winner != null) { doRematch(); true } else false
+                    Key.F3 -> {
+                        showDebugOverlay = !showDebugOverlay
+                        true
+                    }
                     else -> false
                 }
             }
@@ -665,27 +756,50 @@ fun MultiplayerGame(
                     mpState.players.forEachIndexed { i, player ->
                         val color = PLAYER_COLORS[i % PLAYER_COLORS.size]
                         val trail = player.trail
-                        val cachedPath = trailPaths.getOrPut(i) { Path() }
-                        val lastLen = trailPathLengths[i] ?: 0
+                        val cachedTrail = trailCaches.getOrPut(i) { CachedTrailPath() }
 
                         if (trail.isEmpty()) {
-                            cachedPath.reset()
-                            trailPathLengths[i] = 0
-                        } else if (lastLen == 0 || lastLen > trail.size) {
-                            cachedPath.reset()
-                            cachedPath.moveTo(trail[0].start.x, trail[0].start.y)
+                            cachedTrail.reset()
+                        } else if (cachedTrail.segmentCount == 0 || cachedTrail.segmentCount > trail.size) {
+                            cachedTrail.reset()
                             for (s in trail) {
-                                cachedPath.lineTo(s.end.x, s.end.y)
+                                cachedTrail.addSegment(s, player.angle)
                             }
-                            trailPathLengths[i] = trail.size
-                        } else if (lastLen < trail.size) {
-                            for (k in lastLen until trail.size) {
-                                cachedPath.lineTo(trail[k].end.x, trail[k].end.y)
+                        } else if (cachedTrail.segmentCount < trail.size) {
+                            for (k in cachedTrail.segmentCount until trail.size) {
+                                cachedTrail.addSegment(trail[k], player.angle)
                             }
-                            trailPathLengths[i] = trail.size
+                        }
+                        if (player.isDead) {
+                            cachedTrail.finishTrail(player.position)
                         }
 
-                        drawTrail(cachedPath, color)
+                        drawTrail(cachedTrail.path, color)
+
+                        // Connect uncommitted tip to current head
+                        if (cachedTrail.segmentCount > 0 && !player.isDead) {
+                            val headX = player.position.x
+                            val headY = player.position.y
+                            if (cachedTrail.lastCommittedX != headX || cachedTrail.lastCommittedY != headY) {
+                                val start = Offset(cachedTrail.lastCommittedX, cachedTrail.lastCommittedY)
+                                val end = Offset(headX, headY)
+                                drawLine(
+                                    color = color.copy(alpha = 0.35f),
+                                    start = start,
+                                    end = end,
+                                    strokeWidth = 8f,
+                                    cap = StrokeCap.Round,
+                                )
+                                drawLine(
+                                    color = color,
+                                    start = start,
+                                    end = end,
+                                    strokeWidth = 2.5f,
+                                    cap = StrokeCap.Round,
+                                )
+                            }
+                        }
+
                         if (!player.isDead) {
                             val angleDeg = (player.angle * (180.0 / kotlin.math.PI)).toFloat()
                             drawHead(player.position, angleDeg, color)
@@ -750,6 +864,106 @@ fun MultiplayerGame(
                                 GAME_HEIGHT / 2f - titleMeasured.size.height / 2f - 50f,
                             ),
                         )
+                    }
+
+                    // Debug overlay HUD (top-right)
+                    if (showDebugOverlay) {
+                        val myPlayer = mpState.players.getOrNull(if (myPlayerIndex in mpState.players.indices) myPlayerIndex else 0)
+                        val angVel = myPlayer?.angularVelocity ?: 0f
+                        val degPerSec = angVel * (180f / kotlin.math.PI.toFloat()) * tps
+                        val linearSpeedSec = (SPEED * tps).roundToInt()
+                        val totalSegs = mpState.players.sumOf { it.trail.size }
+                        val botCount = mpState.players.count { it.isBot }
+                        val aliveBots = mpState.players.count { it.isBot && !it.isDead }
+
+                        val fpsColor = when {
+                            fps >= 55 -> Color(0xFF39FF14)
+                            fps >= 30 -> Color(0xFFFFCC00)
+                            else -> Color(0xFFFF3333)
+                        }
+                        val tpsColor = when {
+                            tps >= 55 -> Color(0xFF39FF14)
+                            tps >= 30 -> Color(0xFFFFCC00)
+                            else -> Color(0xFFFF3333)
+                        }
+
+                        val headerStyle = TextStyle(
+                            fontSize = 24.sp,
+                            fontWeight = FontWeight.Bold,
+                            fontFamily = gameFont,
+                            color = Color(0xFF00FFCC),
+                        )
+                        val labelStyle = TextStyle(
+                            fontSize = 20.sp,
+                            fontWeight = FontWeight.Normal,
+                            fontFamily = FontFamily.Monospace,
+                            color = Color(0xFF88AA99),
+                        )
+
+                        class StatEntry(val label: String, val value: String, val valueColor: Color)
+                        val statList = mutableListOf(
+                            StatEntry("FPS", "$fps", fpsColor),
+                            StatEntry("TPS", "$tps", tpsColor),
+                            StatEntry("SPEED", "$linearSpeedSec px/s (3.0 px/t)", Color(0xFFE0FFEE)),
+                            StatEntry("ANG VEL", "${format1Dec(angVel)} rad/t (${format1Dec(degPerSec)}°/s)", Color(0xFFE0FFEE)),
+                            StatEntry("TRAILS", "$totalSegs segs", Color(0xFFE0FFEE)),
+                        )
+                        if (botCount > 0) {
+                            statList.add(StatEntry("BOTS", "$aliveBots/$botCount alive", Color(0xFFE0FFEE)))
+                        }
+
+                        val headerMeasured = textMeasurer.measure("DEBUG STATS [F3]", headerStyle)
+                        val measuredEntries = statList.map { entry ->
+                            val labelM = textMeasurer.measure(entry.label.padEnd(9), labelStyle)
+                            val valueM = textMeasurer.measure(entry.value, labelStyle.copy(color = entry.valueColor))
+                            Triple(labelM, valueM, labelM.size.width + valueM.size.width)
+                        }
+
+                        val maxContentWidth = maxOf(
+                            headerMeasured.size.width.toFloat(),
+                            (measuredEntries.maxOfOrNull { it.third } ?: 0).toFloat()
+                        )
+                        val boxPadding = 24f
+                        val panelWidth = maxOf(520f, maxContentWidth + boxPadding * 2)
+                        val lineHeight = 32f
+                        val panelHeight = boxPadding * 2 + headerMeasured.size.height + 16f + (statList.size * lineHeight)
+                        val panelX = GAME_WIDTH - pad - panelWidth
+                        val panelY = pad + topInset
+
+                        // Background panel
+                        drawRoundRect(
+                            color = Color(0xDD05100B),
+                            topLeft = Offset(panelX, panelY),
+                            size = Size(panelWidth, panelHeight),
+                            cornerRadius = CornerRadius(12f, 12f),
+                        )
+                        drawRoundRect(
+                            color = Color(0x6600FFCC),
+                            topLeft = Offset(panelX, panelY),
+                            size = Size(panelWidth, panelHeight),
+                            cornerRadius = CornerRadius(12f, 12f),
+                            style = Stroke(width = 2f),
+                        )
+
+                        // Title
+                        drawText(headerMeasured, topLeft = Offset(panelX + boxPadding, panelY + boxPadding))
+
+                        // Divider line
+                        val dividerY = panelY + boxPadding + headerMeasured.size.height + 8f
+                        drawLine(
+                            color = Color(0x4400FFCC),
+                            start = Offset(panelX + boxPadding, dividerY),
+                            end = Offset(panelX + panelWidth - boxPadding, dividerY),
+                            strokeWidth = 1.5f,
+                        )
+
+                        // Rows
+                        var textY = dividerY + 12f
+                        for ((labelM, valueM, _) in measuredEntries) {
+                            drawText(labelM, topLeft = Offset(panelX + boxPadding, textY))
+                            drawText(valueM, topLeft = Offset(panelX + boxPadding + labelM.size.width, textY))
+                            textY += lineHeight
+                        }
                     }
                 } else {
                     // Waiting for game start
