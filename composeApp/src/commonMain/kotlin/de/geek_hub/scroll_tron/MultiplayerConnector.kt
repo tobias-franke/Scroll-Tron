@@ -48,6 +48,7 @@ abstract class MultiplayerConnector {
     abstract fun onGameSyncReceived(callback: (GameSyncData) -> Unit)
     abstract fun onGameOverReceived(callback: (winnerIndex: Int) -> Unit)
     abstract fun onRematchReceived(callback: (playerIndex: Int) -> Unit)
+    abstract fun onPlayerDisconnected(callback: (playerIndex: Int) -> Unit)
 
     // -----------------------------------------------------------------------
     // Send typed messages

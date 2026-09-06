@@ -249,6 +249,10 @@ private fun stepPlayer(
 private fun stepPredicted(state: GameState): GameState {
     if (state.isDead) return state
 
+    val wallHit = state.position.x < 0 || state.position.x > GAME_WIDTH ||
+                  state.position.y < 0 || state.position.y > GAME_HEIGHT
+    if (wallHit) return state
+
     val newAngle = state.angle + state.angularVelocity
     val newAngVel = state.angularVelocity * ANGULAR_DECAY
 
@@ -494,9 +498,11 @@ fun MultiplayerGame(
     var gameStarted by remember { mutableStateOf(false) }
     var isLeaving by remember { mutableStateOf(false) }
     var connectionLost by remember { mutableStateOf(false) }
+    var roundId by remember { mutableStateOf(0) }
     var fps by remember { mutableStateOf(60) }
     var tps by remember { mutableStateOf(60) }
     var showDebugOverlay by remember { mutableStateOf(false) }
+    var syncReceivedCounter by remember { mutableStateOf(0) }
 
     val spatialGrid = remember { SpatialGrid() }
     val trailCaches = remember { mutableMapOf<Int, CachedTrailPath>() }
@@ -523,6 +529,8 @@ fun MultiplayerGame(
             resetRoundResources()
             mpState = mpInitialState(totalPlayers, aiCount)
             connector.sendGameStart(GAME_WIDTH, GAME_HEIGHT)
+            connectionLost = false
+            roundId++
             gameStarted = true
         }
     }
@@ -543,6 +551,8 @@ fun MultiplayerGame(
                 // Reset local state. By clearing players, we force the next GameSync to re-initialize them with empty trails.
                 readyPlayers = emptySet()
                 mpState = mpState.copy(winner = null, players = emptyList())
+                connectionLost = false
+                roundId++
                 gameStarted = true
             }
         }
@@ -562,6 +572,7 @@ fun MultiplayerGame(
         connector.onGameSyncReceived { syncData ->
             if (!isHost) {
                 // Guest received authoritative state from host
+                syncReceivedCounter++
                 if (mpState.players.size != syncData.players.size) {
                     // Initialize player list with correct size
                     mpState = mpState.copy(
@@ -594,7 +605,27 @@ fun MultiplayerGame(
                 resetRoundResources()
                 mpState = mpInitialState(mpState.players.size, aiCount)
                 readyPlayers = emptySet()
+                connectionLost = false
+                roundId++
                 connector.sendGameStart(GAME_WIDTH, GAME_HEIGHT)
+            }
+        }
+
+        connector.onPlayerDisconnected { playerIndex ->
+            readyPlayers = readyPlayers - playerIndex
+            if (isHost && mpState.winner == null && playerIndex in mpState.players.indices) {
+                val currentPlayers = mpState.players.toMutableList()
+                val p = currentPlayers[playerIndex]
+                if (!p.isDead) {
+                    currentPlayers[playerIndex] = p.copy(isDead = true)
+                    val aliveIndices = currentPlayers.indices.filter { !currentPlayers[it].isDead }
+                    val newWinner = when {
+                        aliveIndices.size == 1 && currentPlayers.size > 1 -> PlayerId.entries[aliveIndices[0]]
+                        aliveIndices.isEmpty() -> PlayerId.Player1
+                        else -> null
+                    }
+                    mpState = mpState.copy(players = currentPlayers, winner = newWinner)
+                }
             }
         }
     }
@@ -607,6 +638,10 @@ fun MultiplayerGame(
         var lastStatNanos = 0L
         var frameCounter = 0
         var tickCounter = 0
+        var localRoundId = roundId
+        var localSyncCounter = syncReceivedCounter
+        var lastSyncNanos = 0L
+        var gameOverSent = false
         while (isActive) {
             withFrameNanos { nanos ->
                 if (lastStatNanos == 0L) lastStatNanos = nanos
@@ -619,6 +654,28 @@ fun MultiplayerGame(
                     frameCounter = 0
                     tickCounter = 0
                     lastStatNanos = nanos
+                }
+
+                if (localRoundId != roundId) {
+                    localRoundId = roundId
+                    lastSyncNanos = 0L
+                    localSyncCounter = syncReceivedCounter
+                    gameOverSent = false
+                }
+
+                if (!isHost) {
+                    if (mpState.winner == null) {
+                        if (lastSyncNanos == 0L) lastSyncNanos = nanos
+                        if (localSyncCounter != syncReceivedCounter) {
+                            localSyncCounter = syncReceivedCounter
+                            lastSyncNanos = nanos
+                        } else if (!connectionLost && nanos - lastSyncNanos > 3_000_000_000L) {
+                            connectionLost = true
+                        }
+                    } else {
+                        // Game over / between rounds — no sync timeout
+                        lastSyncNanos = 0L
+                    }
                 }
 
                 if (lastFrame == 0L) { lastFrame = nanos; return@withFrameNanos }
@@ -662,8 +719,9 @@ fun MultiplayerGame(
                             connector.sendGameSync(stateToSyncData(mpState))
                         }
 
-                        // Notify game over
-                        if (mpState.winner != null) {
+                        // Notify game over (sent once per finished round)
+                        if (mpState.winner != null && !gameOverSent) {
+                            gameOverSent = true
                             connector.sendGameOver(mpState.winner!!.ordinal)
                         }
                     } else {
@@ -685,6 +743,8 @@ fun MultiplayerGame(
                 resetRoundResources()
                 mpState = mpInitialState(mpState.players.size, aiCount)
                 readyPlayers = emptySet()
+                connectionLost = false
+                roundId++
                 connector.sendGameStart(GAME_WIDTH, GAME_HEIGHT)
             }
         }
@@ -967,23 +1027,44 @@ fun MultiplayerGame(
                     }
                 } else {
                     // Waiting for game start
-                    val waitText = "WAITING FOR GAME START..."
-                    val waitMeasured = textMeasurer.measure(
-                        waitText,
-                        TextStyle(
-                            fontSize = 45.sp,
-                            fontWeight = FontWeight.Bold,
-                            fontFamily = gameFont,
-                            color = PLAYER_COLORS[0],
-                        ),
-                    )
-                    drawText(
-                        waitMeasured,
-                        topLeft = Offset(
-                            GAME_WIDTH / 2f - waitMeasured.size.width / 2f,
-                            GAME_HEIGHT / 2f - waitMeasured.size.height / 2f,
-                        ),
-                    )
+                    if (connectionLost) {
+                        drawRect(Color(0xCC000000), size = Size(GAME_WIDTH, GAME_HEIGHT))
+                        val errText = connector.errorMessage ?: "Lost connection to host."
+                        val errMeasured = textMeasurer.measure(
+                            errText,
+                            TextStyle(
+                                fontSize = 36.sp,
+                                fontWeight = FontWeight.Bold,
+                                fontFamily = gameFont,
+                                color = Color(0xFFFF3333),
+                            ),
+                        )
+                        drawText(
+                            errMeasured,
+                            topLeft = Offset(
+                                GAME_WIDTH / 2f - errMeasured.size.width / 2f,
+                                GAME_HEIGHT / 2f - errMeasured.size.height / 2f,
+                            ),
+                        )
+                    } else {
+                        val waitText = "WAITING FOR GAME START..."
+                        val waitMeasured = textMeasurer.measure(
+                            waitText,
+                            TextStyle(
+                                fontSize = 45.sp,
+                                fontWeight = FontWeight.Bold,
+                                fontFamily = gameFont,
+                                color = PLAYER_COLORS[0],
+                            ),
+                        )
+                        drawText(
+                            waitMeasured,
+                            topLeft = Offset(
+                                GAME_WIDTH / 2f - waitMeasured.size.width / 2f,
+                                GAME_HEIGHT / 2f - waitMeasured.size.height / 2f,
+                            ),
+                        )
+                    }
                 }
                     }
                 }
@@ -1001,8 +1082,8 @@ fun MultiplayerGame(
                     Row(
                         horizontalArrangement = Arrangement.spacedBy(16.dp),
                     ) {
-                        // Rematch button (only if not disconnected)
-                        if (!connectionLost) {
+                        // Rematch button (only if not disconnected and game was started)
+                        if (!connectionLost && gameStarted) {
                             val humanCount = maxOf(1, mpState.players.count { !it.isBot })
                             val isReady = readyPlayers.contains(myPlayerIndex)
                             val rematchColor = if (isReady) Color(0xFFAAAAAA) else NEON_LIME

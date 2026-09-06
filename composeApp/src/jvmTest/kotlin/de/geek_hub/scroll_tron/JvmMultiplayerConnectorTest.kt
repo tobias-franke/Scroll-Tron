@@ -78,4 +78,13 @@ class JvmMultiplayerConnectorTest {
     fun testIsMultiplayerSupportedOnJvm() {
         assertTrue(isMultiplayerSupported())
     }
+
+    @Test
+    fun testOnPlayerDisconnected() {
+        val connector = createMultiplayerConnector()
+        var disconnectedPlayer: Int? = null
+        connector.onPlayerDisconnected { disconnectedPlayer = it }
+        // On JVM it is a no-op / safe callback
+        assertEquals(null, disconnectedPlayer)
+    }
 }

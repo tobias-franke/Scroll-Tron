@@ -32,8 +32,12 @@ class WasmJsMultiplayerConnector : MultiplayerConnector() {
     private var gameSyncCallback: ((GameSyncData) -> Unit)? = null
     private var gameOverCallback: ((Int) -> Unit)? = null
     private var rematchCallback: ((Int) -> Unit)? = null
+    private var playerDisconnectedCallback: ((Int) -> Unit)? = null
 
     init {
+        network.onPlayerDisconnected = { idx ->
+            playerDisconnectedCallback?.invoke(idx)
+        }
         network.onStateChanged = { connState ->
             state = when (connState) {
                 ConnectionState.Idle -> LobbyConnectionState.Idle
@@ -129,6 +133,10 @@ class WasmJsMultiplayerConnector : MultiplayerConnector() {
 
     override fun onRematchReceived(callback: (playerIndex: Int) -> Unit) {
         rematchCallback = callback
+    }
+
+    override fun onPlayerDisconnected(callback: (playerIndex: Int) -> Unit) {
+        playerDisconnectedCallback = callback
     }
 
     // -----------------------------------------------------------------------
