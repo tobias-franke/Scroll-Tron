@@ -61,6 +61,7 @@ object MessageType {
     const val GAME_SYNC    = "gameSync"
     const val GAME_OVER    = "gameOver"
     const val REMATCH      = "rematch"
+    const val REJECTED     = "rejected"
 }
 
 enum class ConnectionState {
@@ -82,6 +83,9 @@ class WasmJsNetworkManager {
     var roomCode: String = ""
         private set
 
+    var isGameStarted: Boolean = false
+        private set
+
     val numConnections: Int
         get() = connections.size
 
@@ -95,6 +99,7 @@ class WasmJsNetworkManager {
     // Callbacks set by the lobby/game composables
     var onStateChanged: ((ConnectionState) -> Unit)? = null
     var onMessageReceived: ((type: String, data: JsAny) -> Unit)? = null
+    var onPlayerDisconnected: ((Int) -> Unit)? = null
 
     // -----------------------------------------------------------------------
     // Host flow
@@ -120,14 +125,18 @@ class WasmJsNetworkManager {
 
         peer!!.on("connection") { connAny ->
             val dataConn = connAny!!.unsafeCast<JsDataConnection>()
-            if (connections.size >= 3) {
-                consoleLog("Maximum 4 players reached, rejecting connection from ${dataConn.peer}")
-                dataConn.close()
+            if (isGameStarted) {
+                consoleLog("Game already in progress, rejecting connection from ${dataConn.peer}")
+                rejectConnection(dataConn, "Game is already in progress")
                 return@on
             }
-            val playerIndex = connections.size + 1
-            connections[playerIndex] = dataConn
-            setupDataConnection(dataConn, playerIndex)
+            val availableIndex = (1..3).firstOrNull { it !in connections.keys }
+            if (availableIndex == null) {
+                consoleLog("Maximum 4 players reached, rejecting connection from ${dataConn.peer}")
+                rejectConnection(dataConn, "Room is full (maximum 4 players)")
+                return@on
+            }
+            setupDataConnection(dataConn, availableIndex)
         }
 
         peer!!.on("error") { errAny ->
@@ -182,24 +191,68 @@ class WasmJsNetworkManager {
     // Data channel setup
     // -----------------------------------------------------------------------
 
+    private fun rejectConnection(conn: JsDataConnection, reason: String) {
+        var handled = false
+        val sendAndClose = {
+            if (!handled) {
+                handled = true
+                try {
+                    val msg = createJsObject()
+                    setJsString(msg, "type", MessageType.REJECTED)
+                    setJsString(msg, "reason", reason)
+                    conn.send(msg)
+                } catch (t: Throwable) {
+                    consoleLog("Failed to send rejection message: ${t.message}")
+                }
+                try { conn.close() } catch (_: Throwable) {}
+            }
+        }
+        conn.on("open") { _ ->
+            sendAndClose()
+        }
+        conn.on("error") { _ ->
+            try { conn.close() } catch (_: Throwable) {}
+        }
+        if (conn.open) {
+            sendAndClose()
+        }
+    }
+
     private fun setupDataConnection(conn: JsDataConnection, playerIndex: Int) {
         conn.on("open") { _ ->
             consoleLog("Data channel open with peer: ${conn.peer} (Player $playerIndex)")
+            if (playerIndex != -1) {
+                connections[playerIndex] = conn
+            }
             updateState(ConnectionState.Connected)
         }
 
         conn.on("data") { dataAny ->
             if (dataAny == null) return@on
             val type = getJsString(dataAny, "type") ?: return@on
-            
+
+            if (playerIndex == -1 && type == MessageType.REJECTED) {
+                val reason = getJsString(dataAny, "reason") ?: "Connection rejected"
+                consoleLog("Guest connection rejected by host: $reason")
+                errorMessage = reason
+                updateState(ConnectionState.Error)
+                try { hostConnection?.close() } catch (_: Throwable) {}
+                hostConnection = null
+                return@on
+            }
+
             // If we are host and received input, we need to know which player it is
             if (playerIndex != -1) {
                 setJsInt(dataAny, "playerIndex", playerIndex)
                 setJsBoolean(dataAny, "hasPlayerIndex", true)
-                
+
                 // Host broadcasts rematch requests to all other guests
                 if (type == MessageType.REMATCH) {
-                    connections.values.forEach { it.send(dataAny) }
+                    connections.values.forEach {
+                        if (it.open) {
+                            try { it.send(dataAny) } catch (_: Throwable) {}
+                        }
+                    }
                 }
             }
 
@@ -210,7 +263,8 @@ class WasmJsNetworkManager {
             consoleLog("Data channel closed for Player $playerIndex")
             if (playerIndex != -1) {
                 connections.remove(playerIndex)
-                if (connections.isEmpty()) updateState(ConnectionState.WaitingForGuest)
+                onPlayerDisconnected?.invoke(playerIndex)
+                if (!isGameStarted && connections.isEmpty()) updateState(ConnectionState.WaitingForGuest)
             } else {
                 updateState(ConnectionState.Idle)
             }
@@ -219,8 +273,13 @@ class WasmJsNetworkManager {
         conn.on("error") { errAny ->
             val errStr = if (errAny != null) getErrorString(errAny) else "Unknown error"
             consoleLog("Data channel error (Player $playerIndex): $errStr")
-            errorMessage = "Data channel error: $errStr"
-            updateState(ConnectionState.Error)
+            if (playerIndex != -1) {
+                connections.remove(playerIndex)
+                onPlayerDisconnected?.invoke(playerIndex)
+            } else {
+                errorMessage = "Data channel error: $errStr"
+                updateState(ConnectionState.Error)
+            }
         }
     }
 
@@ -230,10 +289,20 @@ class WasmJsNetworkManager {
 
     fun send(message: JsAny) {
         if (hostConnection != null) {
-            hostConnection?.send(message)
+            if (hostConnection?.open == true) {
+                try { hostConnection?.send(message) } catch (t: Throwable) {
+                    consoleLog("Guest send error: ${t.message}")
+                }
+            }
         } else {
             // Broadcast to all guests
-            connections.values.forEach { it.send(message) }
+            connections.values.forEach { conn ->
+                if (conn.open) {
+                    try { conn.send(message) } catch (t: Throwable) {
+                        consoleLog("Host send error: ${t.message}")
+                    }
+                }
+            }
         }
     }
 
@@ -268,14 +337,17 @@ class WasmJsNetworkManager {
     }
 
     fun sendGameStart(canvasWidth: Float, canvasHeight: Float) {
+        isGameStarted = true
         // Host sends to each guest their player index
         connections.forEach { (index, conn) ->
-            val msg = createJsObject()
-            setJsString(msg, "type", MessageType.GAME_START)
-            setJsFloat(msg, "canvasWidth", canvasWidth)
-            setJsFloat(msg, "canvasHeight", canvasHeight)
-            setJsInt(msg, "playerIndex", index)
-            conn.send(msg)
+            if (conn.open) {
+                val msg = createJsObject()
+                setJsString(msg, "type", MessageType.GAME_START)
+                setJsFloat(msg, "canvasWidth", canvasWidth)
+                setJsFloat(msg, "canvasHeight", canvasHeight)
+                setJsInt(msg, "playerIndex", index)
+                try { conn.send(msg) } catch (_: Throwable) {}
+            }
         }
     }
 
@@ -297,11 +369,14 @@ class WasmJsNetworkManager {
     // -----------------------------------------------------------------------
 
     fun disconnect() {
+        isGameStarted = false
         hostConnection?.close()
         hostConnection = null
-        connections.values.toList().forEach { it.close() }
+        connections.values.toList().forEach { 
+            try { it.close() } catch (_: Throwable) {}
+        }
         connections.clear()
-        peer?.destroy()
+        try { peer?.destroy() } catch (_: Throwable) {}
         peer = null
         updateState(ConnectionState.Idle)
         errorMessage = null

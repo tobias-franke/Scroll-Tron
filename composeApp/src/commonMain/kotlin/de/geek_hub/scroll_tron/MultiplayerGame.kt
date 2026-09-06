@@ -249,6 +249,10 @@ private fun stepPlayer(
 private fun stepPredicted(state: GameState): GameState {
     if (state.isDead) return state
 
+    val wallHit = state.position.x < 0 || state.position.x > GAME_WIDTH ||
+                  state.position.y < 0 || state.position.y > GAME_HEIGHT
+    if (wallHit) return state
+
     val newAngle = state.angle + state.angularVelocity
     val newAngVel = state.angularVelocity * ANGULAR_DECAY
 
@@ -497,6 +501,7 @@ fun MultiplayerGame(
     var fps by remember { mutableStateOf(60) }
     var tps by remember { mutableStateOf(60) }
     var showDebugOverlay by remember { mutableStateOf(false) }
+    var syncReceivedCounter by remember { mutableStateOf(0) }
 
     val spatialGrid = remember { SpatialGrid() }
     val trailCaches = remember { mutableMapOf<Int, CachedTrailPath>() }
@@ -562,6 +567,7 @@ fun MultiplayerGame(
         connector.onGameSyncReceived { syncData ->
             if (!isHost) {
                 // Guest received authoritative state from host
+                syncReceivedCounter++
                 if (mpState.players.size != syncData.players.size) {
                     // Initialize player list with correct size
                     mpState = mpState.copy(
@@ -597,6 +603,23 @@ fun MultiplayerGame(
                 connector.sendGameStart(GAME_WIDTH, GAME_HEIGHT)
             }
         }
+
+        connector.onPlayerDisconnected { playerIndex ->
+            if (isHost && mpState.winner == null && playerIndex in mpState.players.indices) {
+                val currentPlayers = mpState.players.toMutableList()
+                val p = currentPlayers[playerIndex]
+                if (!p.isDead) {
+                    currentPlayers[playerIndex] = p.copy(isDead = true)
+                    val aliveIndices = currentPlayers.indices.filter { !currentPlayers[it].isDead }
+                    val newWinner = when {
+                        aliveIndices.size == 1 && currentPlayers.size > 1 -> PlayerId.entries[aliveIndices[0]]
+                        aliveIndices.isEmpty() -> PlayerId.Player1
+                        else -> null
+                    }
+                    mpState = mpState.copy(players = currentPlayers, winner = newWinner)
+                }
+            }
+        }
     }
 
     // Game loop (host runs physics and steers bots, guest predicts locally)
@@ -607,6 +630,8 @@ fun MultiplayerGame(
         var lastStatNanos = 0L
         var frameCounter = 0
         var tickCounter = 0
+        var localSyncCounter = syncReceivedCounter
+        var lastSyncNanos = 0L
         while (isActive) {
             withFrameNanos { nanos ->
                 if (lastStatNanos == 0L) lastStatNanos = nanos
@@ -619,6 +644,16 @@ fun MultiplayerGame(
                     frameCounter = 0
                     tickCounter = 0
                     lastStatNanos = nanos
+                }
+
+                if (!isHost) {
+                    if (lastSyncNanos == 0L) lastSyncNanos = nanos
+                    if (localSyncCounter != syncReceivedCounter) {
+                        localSyncCounter = syncReceivedCounter
+                        lastSyncNanos = nanos
+                    } else if (!connectionLost && nanos - lastSyncNanos > 3_000_000_000L) {
+                        connectionLost = true
+                    }
                 }
 
                 if (lastFrame == 0L) { lastFrame = nanos; return@withFrameNanos }

@@ -75,6 +75,10 @@ class JvmMultiplayerConnector : MultiplayerConnector() {
         rematchCallback = callback
     }
 
+    override fun onPlayerDisconnected(callback: (playerIndex: Int) -> Unit) {
+        // Local host: no network peers to disconnect
+    }
+
     // -----------------------------------------------------------------------
     // Send typed messages
     // -----------------------------------------------------------------------

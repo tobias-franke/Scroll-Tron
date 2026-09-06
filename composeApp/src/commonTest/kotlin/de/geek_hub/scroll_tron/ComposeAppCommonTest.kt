@@ -85,4 +85,33 @@ class ComposeAppCommonTest {
         assertEquals(true, state.players[2].isBot)
         assertEquals(true, state.players[3].isBot)
     }
+
+    @Test
+    fun testMpInitialState_threePlayersAllHuman() {
+        val state = mpInitialState(numPlayers = 3, aiCount = 0)
+        assertEquals(3, state.players.size)
+        assertEquals(false, state.players[0].isBot)
+        assertEquals(false, state.players[1].isBot)
+        assertEquals(false, state.players[2].isBot)
+    }
+
+    @Test
+    fun testMpInitialState_fourPlayersAllHuman() {
+        val state = mpInitialState(numPlayers = 4, aiCount = 0)
+        assertEquals(4, state.players.size)
+        assertEquals(false, state.players[0].isBot)
+        assertEquals(false, state.players[1].isBot)
+        assertEquals(false, state.players[2].isBot)
+        assertEquals(false, state.players[3].isBot)
+    }
+
+    @Test
+    fun testStepMultiplayer_declaresWinnerWhenOthersDead() {
+        val initial = mpInitialState(numPlayers = 3, aiCount = 0)
+        val playersWithDead = initial.players.mapIndexed { i, p ->
+            if (i == 0) p else p.copy(isDead = true)
+        }
+        val stepped = stepMultiplayer(initial.copy(players = playersWithDead))
+        assertEquals(PlayerId.Player1, stepped.winner)
+    }
 }
