@@ -496,7 +496,7 @@ fun MultiplayerGame(
     var connectionLost by remember { mutableStateOf(false) }
     var fps by remember { mutableStateOf(60) }
     var tps by remember { mutableStateOf(60) }
-    var showDebugOverlay by remember { mutableStateOf(true) }
+    var showDebugOverlay by remember { mutableStateOf(false) }
 
     val spatialGrid = remember { SpatialGrid() }
     val trailCaches = remember { mutableMapOf<Int, CachedTrailPath>() }
@@ -707,7 +707,7 @@ fun MultiplayerGame(
                         true
                     }
                     Key.R -> if (mpState.winner != null) { doRematch(); true } else false
-                    Key.F3, Key.D -> {
+                    Key.F3 -> {
                         showDebugOverlay = !showDebugOverlay
                         true
                     }
@@ -912,7 +912,7 @@ fun MultiplayerGame(
                             statList.add(StatEntry("BOTS", "$aliveBots/$botCount alive", Color(0xFFE0FFEE)))
                         }
 
-                        val headerMeasured = textMeasurer.measure("DEBUG STATS [F3 / D]", headerStyle)
+                        val headerMeasured = textMeasurer.measure("DEBUG STATS [F3]", headerStyle)
                         val measuredEntries = statList.map { entry ->
                             val labelM = textMeasurer.measure(entry.label.padEnd(9), labelStyle)
                             val valueM = textMeasurer.measure(entry.value, labelStyle.copy(color = entry.valueColor))
