@@ -8,7 +8,7 @@ actual fun openUrl(url: String) {
 
 actual fun getPlatformScaleFactor(): Float = 1.0f
 
-actual fun isMultiplayerSupported(): Boolean = false
+actual fun isMultiplayerSupported(): Boolean = true
 
 actual fun copyToClipboard(text: String) {
     try {
