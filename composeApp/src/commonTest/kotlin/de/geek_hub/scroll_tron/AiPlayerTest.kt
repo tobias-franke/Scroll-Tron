@@ -218,7 +218,7 @@ class AiPlayerTest {
 
     @Test
     fun testSpatialGrid_accuracyAndRaycast() {
-        val grid = SpatialGrid(3200f, 1800f, 200f)
+        val grid = SpatialGrid(3200f, 1800f, 100f)
         val seg1 = LineSegment(Point(1600f, 700f), Point(1600f, 900f))
         grid.addSegment(seg1, playerIndex = 1, segmentIndex = 0)
 
@@ -235,6 +235,71 @@ class AiPlayerTest {
     }
 
     @Test
+    fun testDdaRaycast_matchesDirectRaycastAcrossAngles() {
+        val grid = SpatialGrid(3200f, 1800f, 100f)
+        val segments = listOf(
+            LineSegment(Point(500f, 200f), Point(500f, 800f)),   // Vertical wall at x=500
+            LineSegment(Point(200f, 600f), Point(800f, 600f)),   // Horizontal wall at y=600
+            LineSegment(Point(100f, 100f), Point(900f, 900f)),   // Diagonal segment
+        )
+        for (idx in segments.indices) {
+            grid.addSegment(segments[idx], playerIndex = 1, segmentIndex = idx)
+        }
+
+        val origin = Point(400f, 400f)
+        val dummyBot = GameState(
+            position = origin,
+            angle = 0f,
+            angularVelocity = 0f,
+            trail = mutableListOf(),
+            isDead = false,
+            isBot = true,
+        )
+        val dummyOpponent = GameState(
+            position = Point(0f, 0f),
+            angle = 0f,
+            angularVelocity = 0f,
+            trail = segments.toMutableList(),
+            isDead = false,
+            isBot = false,
+        )
+        val players = listOf(dummyBot, dummyOpponent)
+        val testAngles = listOf(
+            0f,
+            (PI / 6).toFloat(),
+            (PI / 4).toFloat(),
+            (PI / 3).toFloat(),
+            (PI / 2).toFloat(),
+            (2 * PI / 3).toFloat(),
+            (3 * PI / 4).toFloat(),
+            PI.toFloat(),
+            (-PI / 4).toFloat(),
+            (-PI / 2).toFloat(),
+            (-3 * PI / 4).toFloat(),
+        )
+
+        for (angle in testAngles) {
+            val directDist = raycastClearanceDirect(
+                origin = origin,
+                angle = angle,
+                maxDist = 600f,
+                players = players,
+                botIndex = 0,
+                botSafeLimit = -1,
+            )
+            val ddaDist = raycastClearanceGrid(
+                origin = origin,
+                angle = angle,
+                maxDist = 600f,
+                grid = grid,
+                botIndex = 0,
+                botSafeLimit = -1,
+            )
+            assertEquals(directDist, ddaDist, 0.02f, "Mismatch at angle $angle")
+        }
+    }
+
+    @Test
     fun testLongRunningSimulation_performanceWithSpatialGrid() {
         // 4 players (1 human, 3 bots)
         var state = mpInitialState(numPlayers = 4, aiCount = 3)
@@ -244,9 +309,11 @@ class AiPlayerTest {
         for (frame in 0 until 600) {
             val updatedPlayers = state.players.toMutableList()
             val aliveBots = updatedPlayers.indices.filter { updatedPlayers[it].isBot && !updatedPlayers[it].isDead }
-            for (botIdx in aliveBots) {
-                // Stagger bots like in game loop
-                val shouldEvaluate = aliveBots.size <= 1 || ((frame + botIdx) % 2 == 0)
+            val numAliveBots = aliveBots.size
+            for (k in aliveBots.indices) {
+                val botIdx = aliveBots[k]
+                // Round-robin scheduling
+                val shouldEvaluate = numAliveBots <= 1 || (frame % numAliveBots == k)
                 if (shouldEvaluate) {
                     val impulse = computeAiSteering(botIdx, state, grid = grid)
                     if (impulse != 0f) {

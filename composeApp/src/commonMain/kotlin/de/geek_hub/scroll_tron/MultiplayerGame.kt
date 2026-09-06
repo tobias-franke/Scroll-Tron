@@ -417,6 +417,66 @@ private fun MultiplayerGameState.applySyncData(data: GameSyncData): MultiplayerG
 }
 
 // ---------------------------------------------------------------------------
+// Incrementally cached, simplified Skia trail paths
+// ---------------------------------------------------------------------------
+
+private class CachedTrailPath {
+    val path = Path()
+    var lastCommittedX = 0f
+    var lastCommittedY = 0f
+    var lastCommittedAngle = 0f
+    var segmentCount = 0
+
+    fun reset() {
+        path.reset()
+        lastCommittedX = 0f
+        lastCommittedY = 0f
+        lastCommittedAngle = 0f
+        segmentCount = 0
+    }
+
+    fun addSegment(seg: LineSegment, playerAngle: Float) {
+        if (segmentCount == 0) {
+            path.moveTo(seg.start.x, seg.start.y)
+            path.lineTo(seg.end.x, seg.end.y)
+            lastCommittedX = seg.end.x
+            lastCommittedY = seg.end.y
+            lastCommittedAngle = playerAngle
+            segmentCount = 1
+            return
+        }
+
+        val dx = seg.end.x - lastCommittedX
+        val dy = seg.end.y - lastCommittedY
+        val distSq = dx * dx + dy * dy
+
+        var angleDiff = abs(playerAngle - lastCommittedAngle)
+        if (angleDiff > kotlin.math.PI.toFloat()) {
+            angleDiff = (2 * kotlin.math.PI).toFloat() - angleDiff
+        }
+
+        // Commit a new vertex if:
+        // 1. Turned noticeably by >= ~2.6 degrees (0.045 rad)
+        // 2. Traveled >= 24px in a straight line (distSq >= 576f)
+        if (angleDiff >= 0.045f || distSq >= 576f) {
+            path.lineTo(seg.end.x, seg.end.y)
+            lastCommittedX = seg.end.x
+            lastCommittedY = seg.end.y
+            lastCommittedAngle = playerAngle
+        }
+        segmentCount++
+    }
+
+    fun finishTrail(lastPos: Point) {
+        if (segmentCount > 0 && (lastCommittedX != lastPos.x || lastCommittedY != lastPos.y)) {
+            path.lineTo(lastPos.x, lastPos.y)
+            lastCommittedX = lastPos.x
+            lastCommittedY = lastPos.y
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Multiplayer Game composable
 // ---------------------------------------------------------------------------
 
@@ -439,13 +499,11 @@ fun MultiplayerGame(
     var showDebugOverlay by remember { mutableStateOf(true) }
 
     val spatialGrid = remember { SpatialGrid() }
-    val trailPaths = remember { mutableMapOf<Int, Path>() }
-    val trailPathLengths = remember { mutableMapOf<Int, Int>() }
+    val trailCaches = remember { mutableMapOf<Int, CachedTrailPath>() }
 
     val resetRoundResources = {
         spatialGrid.clear()
-        trailPaths.clear()
-        trailPathLengths.clear()
+        trailCaches.clear()
     }
 
     // Sync counter — send full state every N frames (host only)
@@ -576,8 +634,10 @@ fun MultiplayerGame(
                             val updatedPlayers = stateWithAi.players.toMutableList()
                             var changed = false
                             val aliveBotIndices = updatedPlayers.indices.filter { updatedPlayers[it].isBot && !updatedPlayers[it].isDead }
-                            for (botIdx in aliveBotIndices) {
-                                val shouldEvaluate = aliveBotIndices.size <= 1 || ((frameCount + botIdx) % 2L == 0L)
+                            val numAliveBots = aliveBotIndices.size
+                            for (k in aliveBotIndices.indices) {
+                                val botIdx = aliveBotIndices[k]
+                                val shouldEvaluate = numAliveBots <= 1 || (frameCount % numAliveBots == k.toLong())
                                 val p = updatedPlayers[botIdx]
                                 val impulse = if (shouldEvaluate) {
                                     computeAiSteering(botIdx, stateWithAi, grid = spatialGrid)
@@ -696,27 +756,50 @@ fun MultiplayerGame(
                     mpState.players.forEachIndexed { i, player ->
                         val color = PLAYER_COLORS[i % PLAYER_COLORS.size]
                         val trail = player.trail
-                        val cachedPath = trailPaths.getOrPut(i) { Path() }
-                        val lastLen = trailPathLengths[i] ?: 0
+                        val cachedTrail = trailCaches.getOrPut(i) { CachedTrailPath() }
 
                         if (trail.isEmpty()) {
-                            cachedPath.reset()
-                            trailPathLengths[i] = 0
-                        } else if (lastLen == 0 || lastLen > trail.size) {
-                            cachedPath.reset()
-                            cachedPath.moveTo(trail[0].start.x, trail[0].start.y)
+                            cachedTrail.reset()
+                        } else if (cachedTrail.segmentCount == 0 || cachedTrail.segmentCount > trail.size) {
+                            cachedTrail.reset()
                             for (s in trail) {
-                                cachedPath.lineTo(s.end.x, s.end.y)
+                                cachedTrail.addSegment(s, player.angle)
                             }
-                            trailPathLengths[i] = trail.size
-                        } else if (lastLen < trail.size) {
-                            for (k in lastLen until trail.size) {
-                                cachedPath.lineTo(trail[k].end.x, trail[k].end.y)
+                        } else if (cachedTrail.segmentCount < trail.size) {
+                            for (k in cachedTrail.segmentCount until trail.size) {
+                                cachedTrail.addSegment(trail[k], player.angle)
                             }
-                            trailPathLengths[i] = trail.size
+                        }
+                        if (player.isDead) {
+                            cachedTrail.finishTrail(player.position)
                         }
 
-                        drawTrail(cachedPath, color)
+                        drawTrail(cachedTrail.path, color)
+
+                        // Connect uncommitted tip to current head
+                        if (cachedTrail.segmentCount > 0 && !player.isDead) {
+                            val headX = player.position.x
+                            val headY = player.position.y
+                            if (cachedTrail.lastCommittedX != headX || cachedTrail.lastCommittedY != headY) {
+                                val start = Offset(cachedTrail.lastCommittedX, cachedTrail.lastCommittedY)
+                                val end = Offset(headX, headY)
+                                drawLine(
+                                    color = color.copy(alpha = 0.35f),
+                                    start = start,
+                                    end = end,
+                                    strokeWidth = 8f,
+                                    cap = StrokeCap.Round,
+                                )
+                                drawLine(
+                                    color = color,
+                                    start = start,
+                                    end = end,
+                                    strokeWidth = 2.5f,
+                                    cap = StrokeCap.Round,
+                                )
+                            }
+                        }
+
                         if (!player.isDead) {
                             val angleDeg = (player.angle * (180.0 / kotlin.math.PI)).toFloat()
                             drawHead(player.position, angleDeg, color)
