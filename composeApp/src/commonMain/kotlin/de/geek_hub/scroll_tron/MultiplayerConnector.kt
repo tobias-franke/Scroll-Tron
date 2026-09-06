@@ -27,10 +27,6 @@ abstract class MultiplayerConnector {
     abstract val roomCode: String
     abstract val connectedPlayers: Int
 
-    /** Set of currently connected player indices (e.g. {0, 1} for host and 1 guest). */
-    open val connectedPlayerIndices: Set<Int>
-        get() = (0 until maxOf(1, connectedPlayers)).toSet()
-
     /** Host a new game — generates a room code. */
     abstract fun hostGame()
 

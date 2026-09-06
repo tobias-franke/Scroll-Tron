@@ -57,9 +57,6 @@ class NetworkManager {
     val numConnections: Int
         get() = connections.values.count { it.open }
 
-    val connectedIndices: Set<Int>
-        get() = setOf(0) + connections.filter { it.value.open }.keys
-
     // Callbacks set by the lobby/game composables
     var onStateChanged: ((ConnectionState) -> Unit)? = null
     var onMessageReceived: ((type: String, data: dynamic) -> Unit)? = null

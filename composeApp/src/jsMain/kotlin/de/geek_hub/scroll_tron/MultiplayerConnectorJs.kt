@@ -22,9 +22,6 @@ class JsMultiplayerConnector : MultiplayerConnector() {
     override val connectedPlayers: Int
         get() = if (network.hostConnection != null) 2 else network.numConnections + 1
 
-    override val connectedPlayerIndices: Set<Int>
-        get() = if (network.hostConnection != null) setOf(0, 1) else network.connectedIndices
-
     private var stateCallback: ((LobbyConnectionState) -> Unit)? = null
     private var gameStartCallback: ((Float, Float, Int) -> Unit)? = null
     private var playerInputCallback: ((Int, Float) -> Unit)? = null

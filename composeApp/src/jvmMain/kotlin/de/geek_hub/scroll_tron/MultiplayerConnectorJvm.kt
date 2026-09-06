@@ -24,9 +24,6 @@ class JvmMultiplayerConnector : MultiplayerConnector() {
     override val connectedPlayers: Int
         get() = if (state == LobbyConnectionState.WaitingForGuest || state == LobbyConnectionState.Connected) 1 else 0
 
-    override val connectedPlayerIndices: Set<Int>
-        get() = if (state == LobbyConnectionState.WaitingForGuest || state == LobbyConnectionState.Connected) setOf(0) else emptySet()
-
     private var stateCallback: ((LobbyConnectionState) -> Unit)? = null
     private var gameStartCallback: ((Float, Float, Int) -> Unit)? = null
     private var playerInputCallback: ((Int, Float) -> Unit)? = null

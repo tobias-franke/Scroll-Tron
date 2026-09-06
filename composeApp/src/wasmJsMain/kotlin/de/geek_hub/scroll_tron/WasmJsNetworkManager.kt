@@ -93,9 +93,6 @@ class WasmJsNetworkManager {
     val numConnections: Int
         get() = connections.values.count { it.open }
 
-    val connectedIndices: Set<Int>
-        get() = setOf(0) + connections.filter { it.value.open }.keys
-
     val isGuest: Boolean
         get() = hostConnection != null
 

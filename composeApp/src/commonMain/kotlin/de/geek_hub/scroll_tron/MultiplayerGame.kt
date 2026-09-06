@@ -599,12 +599,11 @@ fun MultiplayerGame(
 
         connector.onRematchReceived { playerIndex ->
             readyPlayers = readyPlayers + playerIndex
-            val requiredIndices = if (isHost) connector.connectedPlayerIndices else mpState.players.indices.filter { !mpState.players[it].isBot }.toSet()
-            if (isHost && requiredIndices.isNotEmpty() && requiredIndices.all { readyPlayers.contains(it) }) {
+            val humanIndices = mpState.players.indices.filter { !mpState.players[it].isBot }
+            if (isHost && humanIndices.isNotEmpty() && humanIndices.all { readyPlayers.contains(it) }) {
                 // Everyone is ready, start!
                 resetRoundResources()
-                val totalPlayers = minOf(4, maxOf(1, connector.connectedPlayers) + aiCount)
-                mpState = mpInitialState(totalPlayers, aiCount)
+                mpState = mpInitialState(mpState.players.size, aiCount)
                 readyPlayers = emptySet()
                 connectionLost = false
                 roundId++
@@ -738,12 +737,11 @@ fun MultiplayerGame(
         if (!readyPlayers.contains(myPlayerIndex)) {
             readyPlayers = readyPlayers + myPlayerIndex
             connector.sendRematch()
-            val requiredIndices = if (isHost) connector.connectedPlayerIndices else mpState.players.indices.filter { !mpState.players[it].isBot }.toSet()
-            if (isHost && requiredIndices.isNotEmpty() && requiredIndices.all { readyPlayers.contains(it) }) {
+            val humanIndices = mpState.players.indices.filter { !mpState.players[it].isBot }
+            if (isHost && humanIndices.isNotEmpty() && humanIndices.all { readyPlayers.contains(it) }) {
                 // Everyone is ready, start!
                 resetRoundResources()
-                val totalPlayers = minOf(4, maxOf(1, connector.connectedPlayers) + aiCount)
-                mpState = mpInitialState(totalPlayers, aiCount)
+                mpState = mpInitialState(mpState.players.size, aiCount)
                 readyPlayers = emptySet()
                 connectionLost = false
                 roundId++
@@ -1086,7 +1084,7 @@ fun MultiplayerGame(
                     ) {
                         // Rematch button (only if not disconnected and game was started)
                         if (!connectionLost && gameStarted) {
-                            val humanCount = if (isHost) connector.connectedPlayerIndices.size else maxOf(1, mpState.players.count { !it.isBot })
+                            val humanCount = maxOf(1, mpState.players.count { !it.isBot })
                             val isReady = readyPlayers.contains(myPlayerIndex)
                             val rematchColor = if (isReady) Color(0xFFAAAAAA) else NEON_LIME
                             val rematchText = if (isReady) "WAITING (${readyPlayers.size}/$humanCount)" else "REMATCH"
