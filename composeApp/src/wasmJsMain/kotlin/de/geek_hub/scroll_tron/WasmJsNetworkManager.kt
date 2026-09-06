@@ -87,7 +87,7 @@ class WasmJsNetworkManager {
         private set
 
     val numConnections: Int
-        get() = connections.size
+        get() = connections.values.count { it.open }
 
     val isGuest: Boolean
         get() = hostConnection != null
@@ -136,6 +136,7 @@ class WasmJsNetworkManager {
                 rejectConnection(dataConn, "Room is full (maximum 4 players)")
                 return@on
             }
+            connections[availableIndex] = dataConn
             setupDataConnection(dataConn, availableIndex)
         }
 
@@ -361,6 +362,10 @@ class WasmJsNetworkManager {
     fun sendRematch() {
         val msg = createJsObject()
         setJsString(msg, "type", MessageType.REMATCH)
+        if (hostConnection == null) {
+            setJsInt(msg, "playerIndex", 0)
+            setJsBoolean(msg, "hasPlayerIndex", true)
+        }
         send(msg)
     }
 

@@ -498,6 +498,7 @@ fun MultiplayerGame(
     var gameStarted by remember { mutableStateOf(false) }
     var isLeaving by remember { mutableStateOf(false) }
     var connectionLost by remember { mutableStateOf(false) }
+    var roundId by remember { mutableStateOf(0) }
     var fps by remember { mutableStateOf(60) }
     var tps by remember { mutableStateOf(60) }
     var showDebugOverlay by remember { mutableStateOf(false) }
@@ -528,6 +529,8 @@ fun MultiplayerGame(
             resetRoundResources()
             mpState = mpInitialState(totalPlayers, aiCount)
             connector.sendGameStart(GAME_WIDTH, GAME_HEIGHT)
+            connectionLost = false
+            roundId++
             gameStarted = true
         }
     }
@@ -548,6 +551,8 @@ fun MultiplayerGame(
                 // Reset local state. By clearing players, we force the next GameSync to re-initialize them with empty trails.
                 readyPlayers = emptySet()
                 mpState = mpState.copy(winner = null, players = emptyList())
+                connectionLost = false
+                roundId++
                 gameStarted = true
             }
         }
@@ -600,11 +605,14 @@ fun MultiplayerGame(
                 resetRoundResources()
                 mpState = mpInitialState(mpState.players.size, aiCount)
                 readyPlayers = emptySet()
+                connectionLost = false
+                roundId++
                 connector.sendGameStart(GAME_WIDTH, GAME_HEIGHT)
             }
         }
 
         connector.onPlayerDisconnected { playerIndex ->
+            readyPlayers = readyPlayers - playerIndex
             if (isHost && mpState.winner == null && playerIndex in mpState.players.indices) {
                 val currentPlayers = mpState.players.toMutableList()
                 val p = currentPlayers[playerIndex]
@@ -630,8 +638,10 @@ fun MultiplayerGame(
         var lastStatNanos = 0L
         var frameCounter = 0
         var tickCounter = 0
+        var localRoundId = roundId
         var localSyncCounter = syncReceivedCounter
         var lastSyncNanos = 0L
+        var gameOverSent = false
         while (isActive) {
             withFrameNanos { nanos ->
                 if (lastStatNanos == 0L) lastStatNanos = nanos
@@ -646,13 +656,25 @@ fun MultiplayerGame(
                     lastStatNanos = nanos
                 }
 
+                if (localRoundId != roundId) {
+                    localRoundId = roundId
+                    lastSyncNanos = 0L
+                    localSyncCounter = syncReceivedCounter
+                    gameOverSent = false
+                }
+
                 if (!isHost) {
-                    if (lastSyncNanos == 0L) lastSyncNanos = nanos
-                    if (localSyncCounter != syncReceivedCounter) {
-                        localSyncCounter = syncReceivedCounter
-                        lastSyncNanos = nanos
-                    } else if (!connectionLost && nanos - lastSyncNanos > 3_000_000_000L) {
-                        connectionLost = true
+                    if (mpState.winner == null) {
+                        if (lastSyncNanos == 0L) lastSyncNanos = nanos
+                        if (localSyncCounter != syncReceivedCounter) {
+                            localSyncCounter = syncReceivedCounter
+                            lastSyncNanos = nanos
+                        } else if (!connectionLost && nanos - lastSyncNanos > 3_000_000_000L) {
+                            connectionLost = true
+                        }
+                    } else {
+                        // Game over / between rounds — no sync timeout
+                        lastSyncNanos = 0L
                     }
                 }
 
@@ -697,8 +719,9 @@ fun MultiplayerGame(
                             connector.sendGameSync(stateToSyncData(mpState))
                         }
 
-                        // Notify game over
-                        if (mpState.winner != null) {
+                        // Notify game over (sent once per finished round)
+                        if (mpState.winner != null && !gameOverSent) {
+                            gameOverSent = true
                             connector.sendGameOver(mpState.winner!!.ordinal)
                         }
                     } else {
@@ -720,6 +743,8 @@ fun MultiplayerGame(
                 resetRoundResources()
                 mpState = mpInitialState(mpState.players.size, aiCount)
                 readyPlayers = emptySet()
+                connectionLost = false
+                roundId++
                 connector.sendGameStart(GAME_WIDTH, GAME_HEIGHT)
             }
         }

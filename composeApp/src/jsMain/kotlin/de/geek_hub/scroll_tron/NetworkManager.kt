@@ -54,7 +54,7 @@ class NetworkManager {
     internal var hostConnection: JsDataConnection? = null // For guests: connection to host
 
     val numConnections: Int
-        get() = connections.size
+        get() = connections.values.count { it.open }
 
     // Callbacks set by the lobby/game composables
     var onStateChanged: ((ConnectionState) -> Unit)? = null
@@ -96,6 +96,7 @@ class NetworkManager {
                 rejectConnection(dataConn, "Room is full (maximum 4 players)")
                 return@on
             }
+            connections[availableIndex] = dataConn
             setupDataConnection(dataConn, availableIndex)
         }
 
@@ -316,6 +317,9 @@ class NetworkManager {
     fun sendRematch() {
         val msg = js("{}")
         msg.type = MessageType.REMATCH
+        if (hostConnection == null) {
+            msg.playerIndex = 0
+        }
         send(msg)
     }
 
