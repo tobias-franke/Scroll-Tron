@@ -377,14 +377,14 @@ private fun DrawScope.drawScoreHud(
     val hiLabelM    = textMeasurer.measure("RECORD", labelStyle)
     val hiValM      = textMeasurer.measure(hiValText, hiValStyle)
 
-    val padH       = 16f / scaleFactor
+    // Fixed column width for both score boxes so they never resize or jitter
+    val colWidth   = 80f / scaleFactor
+    val padH       = 14f / scaleFactor
     val padV       = 10f / scaleFactor
     val topInset   = 48f / scaleFactor
-    val colGap     = 18f / scaleFactor
+    val colGap     = 16f / scaleFactor
 
-    val scoreColW  = maxOf(scoreLabelM.size.width, scoreValM.size.width).toFloat()
-    val hiColW     = maxOf(hiLabelM.size.width, hiValM.size.width).toFloat()
-    val boxW       = padH * 2 + scoreColW + colGap + hiColW + 6f / scaleFactor
+    val boxW       = padH * 2 + colWidth * 2 + colGap + 4f / scaleFactor
     val boxH       = padV * 2 + maxOf(scoreLabelM.size.height + scoreValM.size.height, hiLabelM.size.height + hiValM.size.height) + 4f
     val boxX       = size.width - boxW - padH
     val boxY       = padV + topInset
@@ -411,13 +411,15 @@ private fun DrawScope.drawScoreHud(
         cornerRadius = CornerRadius(2f / scaleFactor, 2f / scaleFactor),
     )
 
-    // Score column
+    // Score column (fixed width, centered)
     val c1X = boxX + padH + 4f / scaleFactor
-    drawText(scoreLabelM, topLeft = Offset(c1X, boxY + padV))
-    drawText(scoreValM, topLeft = Offset(c1X, boxY + padV + scoreLabelM.size.height + 2f))
+    val scoreLabelX = c1X + (colWidth - scoreLabelM.size.width) / 2f
+    val scoreValX   = c1X + (colWidth - scoreValM.size.width) / 2f
+    drawText(scoreLabelM, topLeft = Offset(scoreLabelX, boxY + padV))
+    drawText(scoreValM,   topLeft = Offset(scoreValX,   boxY + padV + scoreLabelM.size.height + 2f))
 
     // Divider
-    val divX = c1X + scoreColW + (colGap / 2f)
+    val divX = c1X + colWidth + (colGap / 2f)
     drawLine(
         color = Color(0x33FFFFFF),
         start = Offset(divX, boxY + padV + 2f),
@@ -425,10 +427,12 @@ private fun DrawScope.drawScoreHud(
         strokeWidth = 1f,
     )
 
-    // Record column
+    // Record column (fixed width, centered)
     val c2X = divX + (colGap / 2f)
-    drawText(hiLabelM, topLeft = Offset(c2X, boxY + padV))
-    drawText(hiValM, topLeft = Offset(c2X, boxY + padV + hiLabelM.size.height + 2f))
+    val hiLabelX = c2X + (colWidth - hiLabelM.size.width) / 2f
+    val hiValX   = c2X + (colWidth - hiValM.size.width) / 2f
+    drawText(hiLabelM, topLeft = Offset(hiLabelX, boxY + padV))
+    drawText(hiValM,   topLeft = Offset(hiValX,   boxY + padV + hiLabelM.size.height + 2f))
 }
 
 private fun DrawScope.drawDeadOverlay(
@@ -520,11 +524,13 @@ fun SingleplayerGame(onBack: () -> Unit = {}) {
     var isHoveringLyric by remember { mutableStateOf(false) }
     var showHint        by remember { mutableStateOf(true) }
     val deRezSystem   = remember { DeRezSystem() }
+    var animTick      by remember { mutableStateOf(0L) }
 
     val doRestart: () -> Unit = {
         trailColor = nextTrailColor()
         gameState  = initialState(canvasWidth, canvasHeight)
         deRezSystem.clear()
+        animTick++
     }
 
     val focusRequester = remember { FocusRequester() }
@@ -552,7 +558,10 @@ fun SingleplayerGame(onBack: () -> Unit = {}) {
                 val elapsed = (nanos - lastFrame) / 1_000_000L  // ms
                 if (elapsed >= 14L) {                             // ~60 fps
                     lastFrame = nanos
-                    deRezSystem.update()
+                    if (deRezSystem.hasActive()) {
+                        deRezSystem.update()
+                        animTick++
+                    }
                     if (canvasWidth > 0f && canvasHeight > 0f) {
                         val prev = gameState
                         gameState = stepGame(prev, canvasWidth, canvasHeight)
@@ -561,7 +570,10 @@ fun SingleplayerGame(onBack: () -> Unit = {}) {
                             deathCount++
                             val score = gameState.trail.size
                             if (score > highScore) highScore = score
-                            deRezSystem.triggerExplosion(gameState.position.x, gameState.position.y, trailColor)
+                            val crashX = gameState.position.x.coerceIn(0f, canvasWidth)
+                            val crashY = gameState.position.y.coerceIn(0f, canvasHeight)
+                            deRezSystem.triggerExplosion(crashX, crashY, trailColor)
+                            animTick++
                         }
                     }
                 }
@@ -631,6 +643,9 @@ fun SingleplayerGame(onBack: () -> Unit = {}) {
                 }
         ) {
             Canvas(modifier = Modifier.fillMaxSize()) {
+            // Track animTick to drive continuous 60fps redraws during crash animation
+            val _anim = animTick
+
             // Capture canvas size
             if (canvasWidth  != size.width)  canvasWidth  = size.width
             if (canvasHeight != size.height) canvasHeight = size.height
@@ -643,17 +658,11 @@ fun SingleplayerGame(onBack: () -> Unit = {}) {
             // Trail
             drawTrail(gameState.trail, trailColor)
 
-            // De-rez explosion particles & shockwaves
-            deRezSystem.draw(this)
-
             // Head
             if (!gameState.isDead) {
                 val angleDeg = (gameState.angle * (180.0 / kotlin.math.PI)).toFloat()
                 drawHead(gameState.position, angleDeg, trailColor)
             }
-
-            // Live score HUD
-            drawScoreHud(textMeasurer, gameState.trail.size, highScore, trailColor, gameFont, scaleFactor)
 
             // First-start hint
             if (showHint && !gameState.isDead) {
@@ -717,6 +726,12 @@ fun SingleplayerGame(onBack: () -> Unit = {}) {
                     drawDeadOverlay(textMeasurer, gameState.trail.size, highScore, gameFont, scaleFactor)
                 }
             }
+
+            // De-rez explosion particles & shockwaves (drawn after death overlay so sparks and shockwaves burst with full neon brilliance)
+            deRezSystem.draw(this)
+
+            // Live score HUD (fixed width)
+            drawScoreHud(textMeasurer, gameState.trail.size, highScore, trailColor, gameFont, scaleFactor)
         }
 
         // Restart button — shown on both death screens, above the LaunchedEffect focus grab

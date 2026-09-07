@@ -38,27 +38,31 @@ class DeRezShockwave(
     val x: Float,
     val y: Float,
     val color: Color,
-    val maxRadius: Float = 70f,
+    val maxRadius: Float = 75f,
     var currentRadius: Float = 6f,
     var alpha: Float = 1f,
+    val strokeWidth: Float = 2.5f,
 )
 
 class DeRezSystem {
     val particles = mutableListOf<DeRezParticle>()
     val shockwaves = mutableListOf<DeRezShockwave>()
 
-    fun triggerExplosion(x: Float, y: Float, color: Color) {
-        // Shockwaves
-        shockwaves.add(DeRezShockwave(x = x, y = y, color = color, maxRadius = 75f))
-        shockwaves.add(DeRezShockwave(x = x, y = y, color = Color.White, maxRadius = 40f, currentRadius = 3f))
+    fun hasActive(): Boolean = particles.isNotEmpty() || shockwaves.isNotEmpty()
 
-        // Particle sparks
-        for (i in 0 until 30) {
+    fun triggerExplosion(x: Float, y: Float, color: Color) {
+        // Shockwaves: multiple waves for dramatic impact
+        shockwaves.add(DeRezShockwave(x = x, y = y, color = color, maxRadius = 100f, currentRadius = 8f, strokeWidth = 3.5f))
+        shockwaves.add(DeRezShockwave(x = x, y = y, color = Color.White, maxRadius = 55f, currentRadius = 4f, strokeWidth = 2.5f))
+        shockwaves.add(DeRezShockwave(x = x, y = y, color = color.copy(alpha = 0.5f), maxRadius = 140f, currentRadius = 12f, strokeWidth = 4.5f))
+
+        // Particle sparks: 45 energetic debris shards
+        for (i in 0 until 45) {
             val angle = Random.nextFloat() * 2f * PI.toFloat()
-            val speed = 2f + Random.nextFloat() * 7f
-            val maxLife = 0.5f + Random.nextFloat() * 0.45f
-            val size = 2f + Random.nextFloat() * 2.5f
-            val pColor = if (Random.nextBoolean()) color else Color.White
+            val speed = 2f + Random.nextFloat() * 9f
+            val maxLife = 0.65f + Random.nextFloat() * 0.55f
+            val size = 2.5f + Random.nextFloat() * 3.5f
+            val pColor = if (Random.nextFloat() < 0.65f) color else Color.White
             particles.add(
                 DeRezParticle(
                     x = x,
@@ -79,7 +83,7 @@ class DeRezSystem {
         val swIterator = shockwaves.iterator()
         while (swIterator.hasNext()) {
             val sw = swIterator.next()
-            sw.currentRadius += 3.2f
+            sw.currentRadius += 3.8f
             sw.alpha = (1f - (sw.currentRadius / sw.maxRadius)).coerceIn(0f, 1f)
             if (sw.currentRadius >= sw.maxRadius || sw.alpha <= 0.01f) {
                 swIterator.remove()
@@ -92,9 +96,9 @@ class DeRezSystem {
             val p = pIterator.next()
             p.x += p.vx
             p.y += p.vy
-            p.vx *= 0.93f
-            p.vy *= 0.93f
-            p.life -= 0.022f
+            p.vx *= 0.94f
+            p.vy *= 0.94f
+            p.life -= 0.018f
             if (p.life <= 0f) {
                 pIterator.remove()
             }
@@ -111,18 +115,26 @@ class DeRezSystem {
             // Draw shockwaves
             for (sw in shockwaves) {
                 drawCircle(
-                    color = sw.color.copy(alpha = sw.alpha * 0.75f),
+                    color = sw.color.copy(alpha = sw.alpha * 0.85f),
                     radius = sw.currentRadius,
                     center = Offset(sw.x, sw.y),
-                    style = Stroke(width = 2.5f),
+                    style = Stroke(width = sw.strokeWidth),
                 )
             }
-            // Draw particle debris
+            // Draw particle debris with glowing halo
             for (p in particles) {
                 val alpha = (p.life / p.maxLife).coerceIn(0f, 1f)
+                val curSize = p.size * (0.5f + 0.5f * alpha)
+                // Outer glow
+                drawCircle(
+                    color = p.color.copy(alpha = alpha * 0.35f),
+                    radius = curSize * 2.2f,
+                    center = Offset(p.x, p.y),
+                )
+                // Intense core
                 drawCircle(
                     color = p.color.copy(alpha = alpha),
-                    radius = p.size * (0.4f + 0.6f * alpha),
+                    radius = curSize,
                     center = Offset(p.x, p.y),
                 )
             }
