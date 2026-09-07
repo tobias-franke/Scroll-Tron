@@ -941,7 +941,8 @@ fun MultiplayerGame(
                         } else if (cachedTrail.segmentCount == 0 || cachedTrail.segmentCount > trail.size) {
                             cachedTrail.reset()
                             for (s in trail) {
-                                cachedTrail.addSegment(s, player.angle)
+                                val segAngle = kotlin.math.atan2(s.end.y - s.start.y, s.end.x - s.start.x)
+                                cachedTrail.addSegment(s, segAngle)
                             }
                         } else if (cachedTrail.segmentCount < trail.size) {
                             for (k in cachedTrail.segmentCount until trail.size) {
