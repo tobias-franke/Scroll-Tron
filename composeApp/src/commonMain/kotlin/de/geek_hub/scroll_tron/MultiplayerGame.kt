@@ -72,41 +72,54 @@ internal fun format1Dec(v: Float): String {
 
 private fun cross(ux: Float, uy: Float, vx: Float, vy: Float) = ux * vy - uy * vx
 
-private fun segmentsIntersect(
+internal fun intersectionT(
     p1: Point, p2: Point,
     q1: Point, q2: Point,
-): Boolean {
+): Float? {
     val pMinX = if (p1.x < p2.x) p1.x else p2.x
     val pMaxX = if (p1.x > p2.x) p1.x else p2.x
     val qMinX = if (q1.x < q2.x) q1.x else q2.x
     val qMaxX = if (q1.x > q2.x) q1.x else q2.x
-    if (pMaxX < qMinX - 1e-4f || pMinX > qMaxX + 1e-4f) return false
+    if (pMaxX < qMinX - 1e-4f || pMinX > qMaxX + 1e-4f) return null
 
     val pMinY = if (p1.y < p2.y) p1.y else p2.y
     val pMaxY = if (p1.y > p2.y) p1.y else p2.y
     val qMinY = if (q1.y < q2.y) q1.y else q2.y
     val qMaxY = if (q1.y > q2.y) q1.y else q2.y
-    if (pMaxY < qMinY - 1e-4f || pMinY > qMaxY + 1e-4f) return false
+    if (pMaxY < qMinY - 1e-4f || pMinY > qMaxY + 1e-4f) return null
 
     val rx = p2.x - p1.x;  val ry = p2.y - p1.y
     val sx = q2.x - q1.x;  val sy = q2.y - q1.y
     val denom = cross(rx, ry, sx, sy)
     val dx = q1.x - p1.x;  val dy = q1.y - p1.y
-    
+
     if (abs(denom) < 1e-6f) {
         // Parallel or collinear
         if (abs(cross(dx, dy, rx, ry)) < 1e-6f) {
-            // Collinear: Check bounding box overlap
-            return max(pMinX, qMinX) <= min(pMaxX, qMaxX) + 1e-4f &&
-                   max(pMinY, qMinY) <= min(pMaxY, qMaxY) + 1e-4f
+            val overlap = max(pMinX, qMinX) <= min(pMaxX, qMaxX) + 1e-4f &&
+                          max(pMinY, qMinY) <= min(pMaxY, qMaxY) + 1e-4f
+            if (overlap) {
+                val t1 = if (abs(rx) >= abs(ry)) (q1.x - p1.x) / rx else (q1.y - p1.y) / ry
+                val t2 = if (abs(rx) >= abs(ry)) (q2.x - p1.x) / rx else (q2.y - p1.y) / ry
+                return maxOf(0f, minOf(t1, t2)).coerceIn(0f, 1f)
+            }
         }
-        return false
+        return null
     }
-    
+
     val t = cross(dx, dy, sx, sy) / denom
     val u = cross(dx, dy, rx, ry) / denom
-    return t in -1e-4f..1.0001f && u in -1e-4f..1.0001f
+    return if (t in -1e-4f..1.0001f && u in -1e-4f..1.0001f) {
+        t.coerceIn(0f, 1f)
+    } else {
+        null
+    }
 }
+
+internal fun segmentsIntersect(
+    p1: Point, p2: Point,
+    q1: Point, q2: Point,
+): Boolean = intersectionT(p1, p2, q1, q2) != null
 
 // ---------------------------------------------------------------------------
 // Multiplayer initial state
@@ -153,7 +166,7 @@ internal fun mpInitialState(numPlayers: Int, aiCount: Int = 0): MultiplayerGameS
 // Physics step for one player (with opponent trail for cross-collision)
 // ---------------------------------------------------------------------------
 
-private fun stepPlayer(
+internal fun stepPlayer(
     state: GameState,
     allTrails: List<List<LineSegment>>,
     playerIndex: Int = -1,
@@ -169,77 +182,107 @@ private fun stepPlayer(
     val oldPos = state.position
     val newPos = Point(oldPos.x + dx, oldPos.y + dy)
 
-    val newSegment = LineSegment(oldPos, newPos)
-    state.trail.add(newSegment)
-    val segIdx = state.trail.lastIndex
+    var minT = 1.0f
+    var collision = false
 
     // Wall collision
-    val wallHit = newPos.x < 0 || newPos.x > GAME_WIDTH ||
-                  newPos.y < 0 || newPos.y > GAME_HEIGHT
+    if (dx < 0f && newPos.x < 0f) {
+        val t = (-oldPos.x / dx).coerceIn(0f, 1f)
+        if (t < minT) { minT = t; collision = true }
+    } else if (dx > 0f && newPos.x > GAME_WIDTH) {
+        val t = ((GAME_WIDTH - oldPos.x) / dx).coerceIn(0f, 1f)
+        if (t < minT) { minT = t; collision = true }
+    }
+    if (dy < 0f && newPos.y < 0f) {
+        val t = (-oldPos.y / dy).coerceIn(0f, 1f)
+        if (t < minT) { minT = t; collision = true }
+    } else if (dy > 0f && newPos.y > GAME_HEIGHT) {
+        val t = ((GAME_HEIGHT - oldPos.y) / dy).coerceIn(0f, 1f)
+        if (t < minT) { minT = t; collision = true }
+    }
 
-    var collision = false
-    if (!wallHit) {
-        if (grid != null && playerIndex >= 0) {
-            val sMinX = min(newSegment.start.x, newSegment.end.x)
-            val sMaxX = max(newSegment.start.x, newSegment.end.x)
-            val sMinY = min(newSegment.start.y, newSegment.end.y)
-            val sMaxY = max(newSegment.start.y, newSegment.end.y)
+    val segIdx = state.trail.size
+    val selfSafeLimit = segIdx - SKIP_SEGMENTS
 
-            val cMinX = (sMinX / grid.cellSize).toInt().coerceIn(0, grid.cols - 1)
-            val cMaxX = (sMaxX / grid.cellSize).toInt().coerceIn(0, grid.cols - 1)
-            val cMinY = (sMinY / grid.cellSize).toInt().coerceIn(0, grid.rows - 1)
-            val cMaxY = (sMaxY / grid.cellSize).toInt().coerceIn(0, grid.rows - 1)
+    if (grid != null && playerIndex >= 0) {
+        val sMinX = min(oldPos.x, newPos.x)
+        val sMaxX = max(oldPos.x, newPos.x)
+        val sMinY = min(oldPos.y, newPos.y)
+        val sMaxY = max(oldPos.y, newPos.y)
 
-            val selfSafeLimit = segIdx - SKIP_SEGMENTS
+        val cMinX = (sMinX / grid.cellSize).toInt().coerceIn(0, grid.cols - 1)
+        val cMaxX = (sMaxX / grid.cellSize).toInt().coerceIn(0, grid.cols - 1)
+        val cMinY = (sMinY / grid.cellSize).toInt().coerceIn(0, grid.rows - 1)
+        val cMaxY = (sMaxY / grid.cellSize).toInt().coerceIn(0, grid.rows - 1)
 
-            outer@ for (cy in cMinY..cMaxY) {
-                val offset = cy * grid.cols
-                for (cx in cMinX..cMaxX) {
-                    val cell = grid.cells[offset + cx]
-                    for (k in cell.indices) {
-                        val item = cell[k]
-                        if (item.playerIndex == playerIndex && item.segmentIndex >= selfSafeLimit) {
-                            continue
-                        }
-                        if (segmentsIntersect(newSegment.start, newSegment.end, item.seg.start, item.seg.end)) {
-                            collision = true
-                            break@outer
-                        }
+        for (cy in cMinY..cMaxY) {
+            val offset = cy * grid.cols
+            for (cx in cMinX..cMaxX) {
+                val cell = grid.cells[offset + cx]
+                for (k in cell.indices) {
+                    val item = cell[k]
+                    if (item.playerIndex == playerIndex && item.segmentIndex >= selfSafeLimit) {
+                        continue
+                    }
+                    val t = intersectionT(oldPos, newPos, item.seg.start, item.seg.end)
+                    if (t != null && t < minT) {
+                        minT = t
+                        collision = true
                     }
                 }
             }
-            grid.addSegment(newSegment, playerIndex, segIdx)
-        } else {
-            // Fallback trail checking
-            val endIdx = state.trail.size - SKIP_SEGMENTS - 1
-            for (i in 0..endIdx) {
-                val seg = state.trail[i]
-                if (segmentsIntersect(newSegment.start, newSegment.end, seg.start, seg.end)) {
+        }
+    } else {
+        // Fallback trail checking
+        val endIdx = state.trail.size - SKIP_SEGMENTS - 1
+        for (i in 0..endIdx) {
+            val seg = state.trail[i]
+            val t = intersectionT(oldPos, newPos, seg.start, seg.end)
+            if (t != null && t < minT) {
+                minT = t
+                collision = true
+            }
+        }
+        for (trail in allTrails) {
+            if (trail === state.trail) continue
+            for (i in 0 until trail.size) {
+                val seg = trail[i]
+                val t = intersectionT(oldPos, newPos, seg.start, seg.end)
+                if (t != null && t < minT) {
+                    minT = t
                     collision = true
-                    break
-                }
-            }
-            if (!collision) {
-                for (trail in allTrails) {
-                    if (trail === state.trail) continue
-                    for (i in 0 until trail.size) {
-                        val seg = trail[i]
-                        if (segmentsIntersect(newSegment.start, newSegment.end, seg.start, seg.end)) {
-                            collision = true
-                            break
-                        }
-                    }
-                    if (collision) break
                 }
             }
         }
     }
 
+    val finalPos = if (collision) {
+        val impactX = oldPos.x + minT * dx
+        val impactY = oldPos.y + minT * dy
+        val distToImpact = minT * SPEED
+        // Back off by up to 1.25f (half stroke width) so the round cap reaches the obstacle centerline and never penetrates beyond
+        val backOff = minOf(1.25f, distToImpact * 0.8f)
+        val backOffRatio = if (SPEED > 0f) backOff / SPEED else 0f
+        Point(
+            impactX - backOffRatio * dx,
+            impactY - backOffRatio * dy,
+        )
+    } else {
+        newPos
+    }
+
+    val finalSegment = LineSegment(oldPos, finalPos)
+    state.trail.add(finalSegment)
+
+    if (grid != null && playerIndex >= 0) {
+        grid.addSegment(finalSegment, playerIndex, segIdx)
+    }
+
     return state.copy(
-        position = newPos,
+        position = finalPos,
         angle = newAngle,
         angularVelocity = newAngVel,
-        isDead = wallHit || collision,
+        isDead = collision,
     )
 }
 
@@ -395,9 +438,26 @@ private fun MultiplayerGameState.applySyncData(data: GameSyncData): MultiplayerG
         val pData = data.players.getOrNull(i) ?: return@mapIndexed player
         
         val newPos = Point(pData.x, pData.y)
-        if (player.trail.isNotEmpty() && !pData.isDead) {
-            val lastSeg = player.trail.last()
-            player.trail[player.trail.lastIndex] = LineSegment(lastSeg.start, newPos)
+        if (player.trail.isNotEmpty()) {
+            if (!pData.isDead) {
+                val lastSeg = player.trail.last()
+                player.trail[player.trail.lastIndex] = LineSegment(lastSeg.start, newPos)
+            } else {
+                // When player is dead, trim any predicted segments that overshoot newPos
+                while (player.trail.size > 1) {
+                    val lastSeg = player.trail.last()
+                    val segDx = lastSeg.end.x - lastSeg.start.x
+                    val segDy = lastSeg.end.y - lastSeg.start.y
+                    val dot = (newPos.x - lastSeg.start.x) * segDx + (newPos.y - lastSeg.start.y) * segDy
+                    if (dot <= 0f) {
+                        player.trail.removeAt(player.trail.lastIndex)
+                    } else {
+                        break
+                    }
+                }
+                val lastSeg = player.trail.last()
+                player.trail[player.trail.lastIndex] = LineSegment(lastSeg.start, newPos)
+            }
         }
         
         player.copy(
@@ -526,6 +586,7 @@ fun MultiplayerGame(
         mpState.players.forEachIndexed { i, player ->
             if (player.isDead && !prevDeadPlayers.contains(i)) {
                 prevDeadPlayers = prevDeadPlayers + i
+                trailCaches[i]?.reset()
                 val color = PLAYER_COLORS[i % PLAYER_COLORS.size]
                 val crashX = player.position.x.coerceIn(0f, GAME_WIDTH)
                 val crashY = player.position.y.coerceIn(0f, GAME_HEIGHT)

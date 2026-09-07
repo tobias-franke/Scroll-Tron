@@ -156,47 +156,6 @@ private fun DrawScope.drawRickRollOverlay(
 // Collision helpers (parametric segment-segment intersection)
 // ---------------------------------------------------------------------------
 
-/** Cross product of 2-D vectors (u × v). */
-private fun cross(ux: Float, uy: Float, vx: Float, vy: Float) = ux * vy - uy * vx
-
-/**
- * Returns true if segment [p1→p2] intersects [q1→q2].
- * Uses the standard parametric formula:
- *   t = (q1 - p1) × s / (r × s)
- *   u = (q1 - p1) × r / (r × s)
- *   intersection iff 0 ≤ t ≤ 1 and 0 ≤ u ≤ 1
- */
-private fun segmentsIntersect(
-    p1: Point, p2: Point,
-    q1: Point, q2: Point,
-): Boolean {
-    val rx = p2.x - p1.x;  val ry = p2.y - p1.y
-    val sx = q2.x - q1.x;  val sy = q2.y - q1.y
-    val denom = cross(rx, ry, sx, sy)
-    val dx = q1.x - p1.x;  val dy = q1.y - p1.y
-    
-    if (abs(denom) < 1e-6f) {
-        if (abs(cross(dx, dy, rx, ry)) < 1e-6f) {
-            val pMinX = kotlin.math.min(p1.x, p2.x)
-            val pMaxX = kotlin.math.max(p1.x, p2.x)
-            val qMinX = kotlin.math.min(q1.x, q2.x)
-            val qMaxX = kotlin.math.max(q1.x, q2.x)
-            
-            val pMinY = kotlin.math.min(p1.y, p2.y)
-            val pMaxY = kotlin.math.max(p1.y, p2.y)
-            val qMinY = kotlin.math.min(q1.y, q2.y)
-            val qMaxY = kotlin.math.max(q1.y, q2.y)
-            
-            return kotlin.math.max(pMinX, qMinX) <= kotlin.math.min(pMaxX, qMaxX) + 1e-4f &&
-                   kotlin.math.max(pMinY, qMinY) <= kotlin.math.min(pMaxY, qMaxY) + 1e-4f
-        }
-        return false
-    }
-    
-    val t = cross(dx, dy, sx, sy) / denom
-    val u = cross(dx, dy, rx, ry) / denom
-    return t in -1e-4f..1.0001f && u in -1e-4f..1.0001f
-}
 
 // ---------------------------------------------------------------------------
 // Initial state factory
@@ -235,31 +194,60 @@ private fun stepGame(state: GameState, canvasWidth: Float, canvasHeight: Float):
     val oldPos = state.position
     val newPos = Point(oldPos.x + dx, oldPos.y + dy)
 
-    // 3. Build new segment
-    val newSegment = LineSegment(oldPos, newPos)
-    state.trail.add(newSegment)
+    var minT = 1.0f
+    var collision = false
 
-    // 4. Wall collision
-    val wallHit = newPos.x < 0 || newPos.x > canvasWidth ||
-                  newPos.y < 0 || newPos.y > canvasHeight
+    // Wall collision
+    if (dx < 0f && newPos.x < 0f) {
+        val t = (-oldPos.x / dx).coerceIn(0f, 1f)
+        if (t < minT) { minT = t; collision = true }
+    } else if (dx > 0f && newPos.x > canvasWidth) {
+        val t = ((canvasWidth - oldPos.x) / dx).coerceIn(0f, 1f)
+        if (t < minT) { minT = t; collision = true }
+    }
+    if (dy < 0f && newPos.y < 0f) {
+        val t = (-oldPos.y / dy).coerceIn(0f, 1f)
+        if (t < minT) { minT = t; collision = true }
+    } else if (dy > 0f && newPos.y > canvasHeight) {
+        val t = ((canvasHeight - oldPos.y) / dy).coerceIn(0f, 1f)
+        if (t < minT) { minT = t; collision = true }
+    }
 
-    // 5. Self-collision
-    var selfHit = false
+    // Self-collision
     val endIdx = state.trail.size - SKIP_SEGMENTS - 1
     for (i in 0..endIdx) {
         val seg = state.trail[i]
-        if (segmentsIntersect(newSegment.start, newSegment.end, seg.start, seg.end)) {
-            selfHit = true
-            break
+        val t = intersectionT(oldPos, newPos, seg.start, seg.end)
+        if (t != null && t < minT) {
+            minT = t
+            collision = true
         }
     }
 
+    val finalPos = if (collision) {
+        val impactX = oldPos.x + minT * dx
+        val impactY = oldPos.y + minT * dy
+        val distToImpact = minT * SPEED
+        // Back off by up to 1.25f (half stroke width) so the round cap reaches the obstacle centerline and never penetrates beyond
+        val backOff = minOf(1.25f, distToImpact * 0.8f)
+        val backOffRatio = if (SPEED > 0f) backOff / SPEED else 0f
+        Point(
+            impactX - backOffRatio * dx,
+            impactY - backOffRatio * dy,
+        )
+    } else {
+        newPos
+    }
+
+    val finalSegment = LineSegment(oldPos, finalPos)
+    state.trail.add(finalSegment)
+
     return state.copy(
-        position        = newPos,
+        position        = finalPos,
         angle           = newAngle,
         angularVelocity = newAngVel,
         // trail reference stays the same
-        isDead          = wallHit || selfHit,
+        isDead          = collision,
     )
 }
 
