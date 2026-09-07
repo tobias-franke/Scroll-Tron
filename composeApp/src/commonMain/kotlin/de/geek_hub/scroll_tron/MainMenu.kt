@@ -79,13 +79,25 @@ fun MainMenu(
             .focusRequester(focusRequester)
             .focusable()
             .onKeyEvent { event ->
-                if (event.type == KeyEventType.KeyDown && event.key == Key.Escape) {
-                    onExit()
-                    true
+                if (event.type == KeyEventType.KeyDown) {
+                    when (event.key) {
+                        Key.Escape -> { onExit(); true }
+                        Key.M -> { SoundManager.toggleMute(); true }
+                        else -> false
+                    }
                 } else false
             },
         contentAlignment = Alignment.Center,
     ) {
+        // Sound toggle button in top-right corner
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(24.dp),
+            contentAlignment = Alignment.TopEnd,
+        ) {
+            SoundToggleButton(gameFont = gameFont)
+        }
         // Animated grid background
         Canvas(modifier = Modifier.fillMaxSize()) {
             drawRect(BG_COLOR)
@@ -157,7 +169,10 @@ fun MainMenu(
                 text = "SINGLEPLAYER",
                 color = NEON_CYAN,
                 gameFont = gameFont,
-                onClick = onSingleplayer,
+                onClick = {
+                    SoundManager.playClick()
+                    onSingleplayer()
+                },
             )
 
             Spacer(modifier = Modifier.height(20.dp))
@@ -168,7 +183,10 @@ fun MainMenu(
                     text = "MULTIPLAYER",
                     color = NEON_PINK,
                     gameFont = gameFont,
-                    onClick = onMultiplayer,
+                    onClick = {
+                        SoundManager.playClick()
+                        onMultiplayer()
+                    },
                 )
             } else {
                 // Disabled multiplayer on non-web platforms

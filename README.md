@@ -18,6 +18,7 @@ You can play Scroll-Tron directly in your browser here:
 - **Unique Control Scheme**: Steer your light trail using the mouse scroll wheel for a unique challenge.
 - **Multiplayer Mode**: Host or join games with up to 4 players using Peer-to-Peer networking.
 - **Neon Aesthetic**: Retro-futuristic visuals with glowing trails and high-contrast colors.
+- **Retro Sound Effects**: Procedural 80s arcade synth sound effects for steering, crashes, game start, and victories.
 - **Cross-Platform**: Built with Compose Multiplatform, targeting JVM (Desktop) and Wasm/JS (Web).
 - **Easter Eggs**: Discover hidden surprises as you play!
 
@@ -28,6 +29,7 @@ You can play Scroll-Tron directly in your browser here:
 | Action | Control |
 | :--- | :--- |
 | **Steer Left/Right** | Scroll Up / Scroll Down |
+| **Toggle Sound** | Press `M` or Click "SOUND: ON/OFF" |
 | **Restart Game** | Press `R` or Click "RESTART" |
 | **Exit to Menu** | Press `Escape` |
 

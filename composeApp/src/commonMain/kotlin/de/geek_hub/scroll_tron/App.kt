@@ -522,6 +522,11 @@ fun SingleplayerGame(onBack: () -> Unit = {}) {
         gameState  = initialState(canvasWidth, canvasHeight)
         deRezSystem.clear()
         animTick++
+        SoundManager.playStart()
+    }
+
+    LaunchedEffect(Unit) {
+        SoundManager.playStart()
     }
 
     LaunchedEffect(gameState.isDead) {
@@ -529,6 +534,12 @@ fun SingleplayerGame(onBack: () -> Unit = {}) {
             showEndScreen = false
             delay(700L)
             showEndScreen = true
+            val score = gameState.trail.size
+            if (score > 0 && score >= highScore) {
+                SoundManager.playVictory()
+            } else {
+                SoundManager.playGameOver()
+            }
         } else {
             showEndScreen = false
         }
@@ -568,6 +579,7 @@ fun SingleplayerGame(onBack: () -> Unit = {}) {
                         gameState = stepGame(prev, canvasWidth, canvasHeight)
                         // Update highscore and death counter at the moment of death
                         if (!prev.isDead && gameState.isDead) {
+                            SoundManager.playCrash()
                             deathCount++
                             val score = gameState.trail.size
                             if (score > highScore) highScore = score
@@ -594,6 +606,7 @@ fun SingleplayerGame(onBack: () -> Unit = {}) {
                 if (event.type != KeyEventType.KeyDown) return@onKeyEvent false
                 when (event.key) {
                     Key.Escape -> { onBack(); true }
+                    Key.M -> { SoundManager.toggleMute(); true }
                     Key.R -> if (gameState.isDead) {
                         doRestart()
                         true
@@ -606,6 +619,7 @@ fun SingleplayerGame(onBack: () -> Unit = {}) {
                 val delta = event.changes.firstOrNull()?.scrollDelta?.y ?: 0f
                 if (!gameState.isDead && delta != 0f) {
                     showHint = false
+                    SoundManager.playSteer()
                     val sign = if (delta > 0f) 1f else -1f
                     gameState = gameState.copy(
                         angularVelocity = gameState.angularVelocity + sign * STEERING_SENSITIVITY
@@ -753,7 +767,10 @@ fun SingleplayerGame(onBack: () -> Unit = {}) {
                                 color = trailColor,
                                 shape = RoundedCornerShape(4.dp),
                             )
-                            .clickable { doRestart() }
+                            .clickable {
+                                SoundManager.playClick()
+                                doRestart()
+                            }
                             .padding(horizontal = (36 / scaleFactor).dp, vertical = (12 / scaleFactor).dp),
                         contentAlignment = Alignment.Center,
                     ) {
@@ -773,7 +790,10 @@ fun SingleplayerGame(onBack: () -> Unit = {}) {
                                 color = Color(0xFF666666),
                                 shape = RoundedCornerShape(4.dp),
                             )
-                            .clickable { onBack() }
+                            .clickable {
+                                SoundManager.playClick()
+                                onBack()
+                            }
                             .padding(horizontal = (36 / scaleFactor).dp, vertical = (12 / scaleFactor).dp),
                         contentAlignment = Alignment.Center,
                     ) {
