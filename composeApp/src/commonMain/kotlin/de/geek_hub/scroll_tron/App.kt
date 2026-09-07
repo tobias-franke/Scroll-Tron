@@ -1,6 +1,7 @@
 package de.geek_hub.scroll_tron
 
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.focusable
@@ -19,6 +20,7 @@ import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
@@ -274,71 +276,19 @@ private fun DrawScope.drawTrail(trail: List<LineSegment>, trailColor: Color) {
         path.lineTo(trail[i].end.x, trail[i].end.y)
     }
 
-    // Glow: draw twice — wide+dim then narrow+bright
-    drawPath(
-        path = path,
-        color = trailColor.copy(alpha = 0.35f),
-        style = Stroke(width = 8f, cap = StrokeCap.Round, join = androidx.compose.ui.graphics.StrokeJoin.Round),
-    )
-    drawPath(
-        path = path,
-        color = trailColor,
-        style = Stroke(width = 2.5f, cap = StrokeCap.Round, join = androidx.compose.ui.graphics.StrokeJoin.Round),
-    )
+    drawLaserTrail(path, trailColor)
 }
 
 private fun DrawScope.drawHead(pos: Point, angleDeg: Float, trailColor: Color) {
-    // Outer glow
-    drawCircle(
-        brush = Brush.radialGradient(
-            colors = listOf(trailColor.copy(alpha = 0.7f), Color.Transparent),
-            center = Offset(pos.x, pos.y),
-            radius = 18f,
-        ),
-        radius = 18f,
-        center = Offset(pos.x, pos.y),
-    )
-    // Triangle pointing in the direction of travel
-    rotate(degrees = angleDeg, pivot = Offset(pos.x, pos.y)) {
-        val path = Path().apply {
-            moveTo(pos.x + 10f, pos.y)
-            lineTo(pos.x -  7f, pos.y -  6f)
-            lineTo(pos.x -  7f, pos.y +  6f)
-            close()
-        }
-        drawPath(path, color = Color.White)
-        drawPath(
-            path,
-            color = trailColor,
-            style = Stroke(width = 1.5f),
-        )
-    }
+    drawCyberHead(pos, angleDeg, trailColor)
 }
 
 private fun DrawScope.drawGrid() {
-    val step = 60f
-    val lineColor = Color(0xFF0D2A0D)
-    var x = 0f
-    while (x <= size.width) {
-        drawLine(lineColor, Offset(x, 0f), Offset(x, size.height), strokeWidth = 1f)
-        x += step
-    }
-    var y = 0f
-    while (y <= size.height) {
-        drawLine(lineColor, Offset(0f, y), Offset(size.width, y), strokeWidth = 1f)
-        y += step
-    }
+    drawCyberGrid(size.width, size.height)
 }
 
 private fun DrawScope.drawBorder(trailColor: Color) {
-    val strokeWidth = 3f
-    val inset = strokeWidth / 2f
-    drawRect(
-        color = trailColor.copy(alpha = 0.6f),
-        topLeft = Offset(inset, inset),
-        size = Size(size.width - strokeWidth, size.height - strokeWidth),
-        style = Stroke(width = strokeWidth),
-    )
+    drawCyberBorder(size.width, size.height, trailColor)
 }
 
 private fun DrawScope.drawScoreHud(
@@ -349,51 +299,85 @@ private fun DrawScope.drawScoreHud(
     gameFont: FontFamily,
     scaleFactor: Float,
 ) {
-    val scoreText = "SCORE  " + score.toString().padStart(6, '0')
-    val hiText    = "BEST   " + highScore.toString().padStart(6, '0')
+    val scoreValText = score.toString().padStart(5, '0')
+    val hiValText    = highScore.toString().padStart(5, '0')
 
-    val scoreMeasured = textMeasurer.measure(
-        scoreText,
-        TextStyle(
-            fontSize   = (14 / scaleFactor).sp,
-            fontWeight = FontWeight.Bold,
-            fontFamily = FontFamily.Monospace,
-            color      = trailColor,
-        ),
+    val labelStyle = TextStyle(
+        fontSize   = (10 / scaleFactor).sp,
+        fontWeight = FontWeight.Bold,
+        fontFamily = gameFont,
+        color      = CyberColors.DIM_TEXT,
     )
-    val hiMeasured = textMeasurer.measure(
-        hiText,
-        TextStyle(
-            fontSize   = (14 / scaleFactor).sp,
-            fontFamily = FontFamily.Monospace,
-            color      = Color(0xFF666666),
-        ),
+    val scoreValStyle = TextStyle(
+        fontSize   = (16 / scaleFactor).sp,
+        fontWeight = FontWeight.Bold,
+        fontFamily = gameFont,
+        color      = trailColor,
     )
-
-    val padding   = 16f / scaleFactor
-    val topInset  = 48f / scaleFactor
-    val scoreW    = scoreMeasured.multiParagraph.width
-    val scoreH    = scoreMeasured.multiParagraph.height
-    val hiW       = hiMeasured.multiParagraph.width
-    val lineH     = scoreH + 4f
-
-    // Semi-transparent pill background
-    val boxW = maxOf(scoreW, hiW) + padding * 2
-    val boxH = lineH * 2 + padding
-    drawRect(
-        color   = Color(0xCC000000),
-        topLeft = Offset(size.width - boxW - padding, padding + topInset),
-        size    = Size(boxW, boxH),
+    val hiValStyle = TextStyle(
+        fontSize   = (16 / scaleFactor).sp,
+        fontWeight = FontWeight.Normal,
+        fontFamily = gameFont,
+        color      = if (score > 0 && score >= highScore) CyberColors.NEON_LIME else Color(0xFFAAAAAA),
     )
 
-    drawText(
-        scoreMeasured,
-        topLeft = Offset(size.width - scoreW - padding * 2, padding + topInset + 6f),
+    val scoreLabelM = textMeasurer.measure("SCORE", labelStyle)
+    val scoreValM   = textMeasurer.measure(scoreValText, scoreValStyle)
+    val hiLabelM    = textMeasurer.measure("RECORD", labelStyle)
+    val hiValM      = textMeasurer.measure(hiValText, hiValStyle)
+
+    val padH       = 16f / scaleFactor
+    val padV       = 10f / scaleFactor
+    val topInset   = 48f / scaleFactor
+    val colGap     = 18f / scaleFactor
+
+    val scoreColW  = maxOf(scoreLabelM.size.width, scoreValM.size.width).toFloat()
+    val hiColW     = maxOf(hiLabelM.size.width, hiValM.size.width).toFloat()
+    val boxW       = padH * 2 + scoreColW + colGap + hiColW + 6f / scaleFactor
+    val boxH       = padV * 2 + maxOf(scoreLabelM.size.height + scoreValM.size.height, hiLabelM.size.height + hiValM.size.height) + 4f
+    val boxX       = size.width - boxW - padH
+    val boxY       = padV + topInset
+
+    // Floating cyber glass panel
+    drawRoundRect(
+        color = CyberColors.PANEL_BG,
+        topLeft = Offset(boxX, boxY),
+        size = Size(boxW, boxH),
+        cornerRadius = CornerRadius(8f / scaleFactor, 8f / scaleFactor),
     )
-    drawText(
-        hiMeasured,
-        topLeft = Offset(size.width - hiW - padding * 2, padding + topInset + 6f + lineH),
+    drawRoundRect(
+        color = trailColor.copy(alpha = 0.45f),
+        topLeft = Offset(boxX, boxY),
+        size = Size(boxW, boxH),
+        cornerRadius = CornerRadius(8f / scaleFactor, 8f / scaleFactor),
+        style = Stroke(width = 1.2f / scaleFactor),
     )
+    // Left glowing accent bar
+    drawRoundRect(
+        color = trailColor,
+        topLeft = Offset(boxX, boxY),
+        size = Size(3.5f / scaleFactor, boxH),
+        cornerRadius = CornerRadius(2f / scaleFactor, 2f / scaleFactor),
+    )
+
+    // Score column
+    val c1X = boxX + padH + 4f / scaleFactor
+    drawText(scoreLabelM, topLeft = Offset(c1X, boxY + padV))
+    drawText(scoreValM, topLeft = Offset(c1X, boxY + padV + scoreLabelM.size.height + 2f))
+
+    // Divider
+    val divX = c1X + scoreColW + (colGap / 2f)
+    drawLine(
+        color = Color(0x33FFFFFF),
+        start = Offset(divX, boxY + padV + 2f),
+        end = Offset(divX, boxY + boxH - padV - 2f),
+        strokeWidth = 1f,
+    )
+
+    // Record column
+    val c2X = divX + (colGap / 2f)
+    drawText(hiLabelM, topLeft = Offset(c2X, boxY + padV))
+    drawText(hiValM, topLeft = Offset(c2X, boxY + padV + hiLabelM.size.height + 2f))
 }
 
 private fun DrawScope.drawDeadOverlay(
@@ -403,22 +387,22 @@ private fun DrawScope.drawDeadOverlay(
     gameFont: FontFamily,
     scaleFactor: Float,
 ) {
-    // Dim overlay
-    drawRect(Color(0xCC000000))
+    // Dim cyber overlay
+    drawRect(Color(0xDD010503))
 
     val isNewBest = score > 0 && score >= highScore
 
     val title      = "SYSTEM FAILURE"
-    val scoreLine  = if (isNewBest) "NEW BEST: $score" else "SCORE: $score"
-    val bestLine   = if (isNewBest) ""                    else "BEST:  $highScore"
+    val scoreLine  = if (isNewBest) "NEW RECORD: $score" else "FINAL SCORE: $score"
+    val bestLine   = if (isNewBest) "★ NEW PERSONAL BEST ★" else "BEST RECORD:  $highScore"
 
     val titleMeasured = textMeasurer.measure(
         title,
         TextStyle(
-            fontSize   = (48 / scaleFactor).sp,
+            fontSize   = (44 / scaleFactor).sp,
             fontWeight = FontWeight.Bold,
             fontFamily = gameFont,
-            color      = NEON_PINK,
+            color      = CyberColors.NEON_PINK,
         ),
     )
     val scoreMeasured = textMeasurer.measure(
@@ -427,42 +411,61 @@ private fun DrawScope.drawDeadOverlay(
             fontSize   = (22 / scaleFactor).sp,
             fontWeight = FontWeight.Bold,
             fontFamily = gameFont,
-            color      = if (isNewBest) NEON_LIME else Color(0xFFEEEEEE),
+            color      = if (isNewBest) CyberColors.NEON_LIME else Color(0xFFEEEEEE),
         ),
     )
-    val bestMeasured = if (bestLine.isNotEmpty()) textMeasurer.measure(
+    val bestMeasured = textMeasurer.measure(
         bestLine,
         TextStyle(
-            fontSize   = (16 / scaleFactor).sp,
+            fontSize   = (15 / scaleFactor).sp,
+            fontWeight = if (isNewBest) FontWeight.Bold else FontWeight.Normal,
             fontFamily = gameFont,
-            color      = Color(0xFF666666),
+            color      = if (isNewBest) CyberColors.NEON_LIME.copy(alpha = 0.9f) else CyberColors.DIM_TEXT,
         ),
-    ) else null
+    )
 
     val cx  = size.width  / 2f
     val cy  = size.height / 2f
-    val gap = 12f / scaleFactor  // vertical margin between lines
+    val gap = 12f / scaleFactor
 
-    // Compute total block height so we can centre it vertically
     val titleH = titleMeasured.size.height.toFloat()
     val scoreH = scoreMeasured.size.height.toFloat()
-    val bestH  = bestMeasured?.size?.height?.toFloat() ?: 0f
-    val totalH = titleH + gap + scoreH + if (bestMeasured != null) gap + bestH else 0f
-    var cursorY = cy - totalH / 2f
+    val bestH  = bestMeasured.size.height.toFloat()
+    val totalH = titleH + gap + scoreH + gap + bestH
+
+    val panelW = maxOf(titleMeasured.size.width + 72f / scaleFactor, 380f / scaleFactor)
+    val panelH = totalH + 54f / scaleFactor
+    val panelX = cx - panelW / 2f
+    val panelY = cy - panelH / 2f - 24f / scaleFactor
+
+    // Glass panel with glowing border
+    drawRoundRect(
+        color = CyberColors.PANEL_BG,
+        topLeft = Offset(panelX, panelY),
+        size = Size(panelW, panelH),
+        cornerRadius = CornerRadius(12f / scaleFactor, 12f / scaleFactor),
+    )
+    drawRoundRect(
+        color = CyberColors.NEON_PINK.copy(alpha = 0.6f),
+        topLeft = Offset(panelX, panelY),
+        size = Size(panelW, panelH),
+        cornerRadius = CornerRadius(12f / scaleFactor, 12f / scaleFactor),
+        style = Stroke(width = 1.6f / scaleFactor),
+    )
+    drawCornerBrackets(panelW, panelH, CyberColors.NEON_PINK, bracketLength = 18f / scaleFactor, bracketStroke = 2.5f / scaleFactor, margin = 4f / scaleFactor)
+
+    var cursorY = panelY + 26f / scaleFactor
 
     // Title
-    drawText(titleMeasured,
-        topLeft = Offset(cx - titleMeasured.size.width / 2f, cursorY))
+    drawText(titleMeasured, topLeft = Offset(cx - titleMeasured.size.width / 2f, cursorY))
     cursorY += titleH + gap
 
     // Score
-    drawText(scoreMeasured,
-        topLeft = Offset(cx - scoreMeasured.size.width / 2f, cursorY))
+    drawText(scoreMeasured, topLeft = Offset(cx - scoreMeasured.size.width / 2f, cursorY))
     cursorY += scoreH + gap
 
-    // Best (optional)
-    if (bestMeasured != null) drawText(bestMeasured,
-        topLeft = Offset(cx - bestMeasured.size.width / 2f, cursorY))
+    // Best
+    drawText(bestMeasured, topLeft = Offset(cx - bestMeasured.size.width / 2f, cursorY))
 }
 
 // ---------------------------------------------------------------------------
@@ -484,10 +487,12 @@ fun SingleplayerGame(onBack: () -> Unit = {}) {
     var rickLyricRect  by remember { mutableStateOf<Rect?>(null) }
     var isHoveringLyric by remember { mutableStateOf(false) }
     var showHint        by remember { mutableStateOf(true) }
+    val deRezSystem   = remember { DeRezSystem() }
 
     val doRestart: () -> Unit = {
         trailColor = nextTrailColor()
         gameState  = initialState(canvasWidth, canvasHeight)
+        deRezSystem.clear()
     }
 
     val focusRequester = remember { FocusRequester() }
@@ -515,6 +520,7 @@ fun SingleplayerGame(onBack: () -> Unit = {}) {
                 val elapsed = (nanos - lastFrame) / 1_000_000L  // ms
                 if (elapsed >= 14L) {                             // ~60 fps
                     lastFrame = nanos
+                    deRezSystem.update()
                     if (canvasWidth > 0f && canvasHeight > 0f) {
                         val prev = gameState
                         gameState = stepGame(prev, canvasWidth, canvasHeight)
@@ -523,6 +529,7 @@ fun SingleplayerGame(onBack: () -> Unit = {}) {
                             deathCount++
                             val score = gameState.trail.size
                             if (score > highScore) highScore = score
+                            deRezSystem.triggerExplosion(gameState.position.x, gameState.position.y, trailColor)
                         }
                     }
                 }
@@ -596,13 +603,15 @@ fun SingleplayerGame(onBack: () -> Unit = {}) {
             if (canvasWidth  != size.width)  canvasWidth  = size.width
             if (canvasHeight != size.height) canvasHeight = size.height
 
-            // Background
-            drawRect(Color(0xFF020C02))
+            // Cyber arena background & perimeter
             drawGrid()
             drawBorder(trailColor)
 
             // Trail
             drawTrail(gameState.trail, trailColor)
+
+            // De-rez explosion particles & shockwaves
+            deRezSystem.draw(this)
 
             // Head
             if (!gameState.isDead) {
@@ -615,12 +624,11 @@ fun SingleplayerGame(onBack: () -> Unit = {}) {
 
             // First-start hint
             if (showHint && !gameState.isDead) {
-                // Pulse alpha between 0.4 and 1.0 based on trail length as a simple frame proxy
                 val pulse = 0.4f + 0.6f * ((1f + sin(gameState.trail.size.toFloat() * 0.08f)) / 2f)
                 val hintMeasured = textMeasurer.measure(
                     "SCROLL TO STEER",
                     TextStyle(
-                        fontSize   = (18 / scaleFactor).sp,
+                        fontSize   = (16 / scaleFactor).sp,
                         fontWeight = FontWeight.Bold,
                         fontFamily = gameFont,
                         color      = trailColor.copy(alpha = pulse),
@@ -628,15 +636,37 @@ fun SingleplayerGame(onBack: () -> Unit = {}) {
                 )
                 val textW = hintMeasured.size.width.toFloat()
                 val textH = hintMeasured.size.height.toFloat()
-                val arrowGap = 16f / scaleFactor          // space between arrows and text
-                val arrowH   = 14f / scaleFactor          // height of each triangle
-                val arrowW   = 12f / scaleFactor          // half-width of each triangle
-                val arrowSpacing = 6f / scaleFactor       // gap between the two triangles
+                val arrowGap = 14f / scaleFactor
+                val arrowH   = 12f / scaleFactor
+                val arrowW   = 10f / scaleFactor
+                val arrowSpacing = 5f / scaleFactor
                 val totalW   = arrowW * 2 + arrowGap + textW
                 val startX   = size.width / 2f - totalW / 2f
                 val textY    = size.height / 2f + 60f
-                val arrowCx  = startX + arrowW  // centre-x of arrows
-                val arrowCy  = textY + textH / 2f  // vertically centred on text
+                val arrowCx  = startX + arrowW
+                val arrowCy  = textY + textH / 2f
+
+                val pillPadH = 20f / scaleFactor
+                val pillPadV = 10f / scaleFactor
+                val pillW = totalW + pillPadH * 2
+                val pillH = textH + pillPadV * 2
+                val pillX = startX - pillPadH
+                val pillY = textY - pillPadV
+
+                // Sleek cyber pill backdrop
+                drawRoundRect(
+                    color = CyberColors.PANEL_BG,
+                    topLeft = Offset(pillX, pillY),
+                    size = Size(pillW, pillH),
+                    cornerRadius = CornerRadius(pillH / 2f, pillH / 2f),
+                )
+                drawRoundRect(
+                    color = trailColor.copy(alpha = pulse * 0.5f),
+                    topLeft = Offset(pillX, pillY),
+                    size = Size(pillW, pillH),
+                    cornerRadius = CornerRadius(pillH / 2f, pillH / 2f),
+                    style = Stroke(width = 1.2f / scaleFactor),
+                )
 
                 val arrowColor = trailColor.copy(alpha = pulse)
 
@@ -677,7 +707,7 @@ fun SingleplayerGame(onBack: () -> Unit = {}) {
             }
         }
 
-        // Restart button — shown on both death screens, above the LaunchedEffect focus grab
+        // Restart / Menu action buttons
         if (gameState.isDead) {
             Box(
                 modifier = Modifier
@@ -688,45 +718,23 @@ fun SingleplayerGame(onBack: () -> Unit = {}) {
                 Row(
                     horizontalArrangement = Arrangement.spacedBy((16 / scaleFactor).dp),
                 ) {
-                    Box(
-                        modifier = Modifier
-                            .border(
-                                width = (1 / scaleFactor).dp,
-                                color = trailColor,
-                                shape = RoundedCornerShape(4.dp),
-                            )
-                            .clickable { doRestart() }
-                            .padding(horizontal = (36 / scaleFactor).dp, vertical = (12 / scaleFactor).dp),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        Text(
-                            text       = "RESTART",
-                            fontFamily = gameFont,
-                            fontWeight = FontWeight.Bold,
-                            fontSize   = (16 / scaleFactor).sp,
-                            color      = trailColor,
-                        )
-                    }
+                    CyberActionButton(
+                        text = "RESTART",
+                        hint = "R",
+                        color = trailColor,
+                        gameFont = gameFont,
+                        scaleFactor = scaleFactor,
+                        onClick = doRestart,
+                    )
 
-                    Box(
-                        modifier = Modifier
-                            .border(
-                                width = (1 / scaleFactor).dp,
-                                color = Color(0xFF666666),
-                                shape = RoundedCornerShape(4.dp),
-                            )
-                            .clickable { onBack() }
-                            .padding(horizontal = (36 / scaleFactor).dp, vertical = (12 / scaleFactor).dp),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        Text(
-                            text       = "MAIN MENU",
-                            fontFamily = gameFont,
-                            fontWeight = FontWeight.Bold,
-                            fontSize   = (16 / scaleFactor).sp,
-                            color      = Color(0xFF666666),
-                        )
-                    }
+                    CyberActionButton(
+                        text = "MAIN MENU",
+                        hint = "ESC",
+                        color = Color(0xFFAAAAAA),
+                        gameFont = gameFont,
+                        scaleFactor = scaleFactor,
+                        onClick = onBack,
+                    )
                 }
             }
         }
@@ -739,6 +747,57 @@ fun SingleplayerGame(onBack: () -> Unit = {}) {
     // Escape and R always route back to the main Box.
     LaunchedEffect(Unit) { focusRequester.requestFocus() }
     LaunchedEffect(gameState.isDead) { focusRequester.requestFocus() }
+}
+
+@Composable
+fun CyberActionButton(
+    text: String,
+    hint: String,
+    color: Color,
+    gameFont: FontFamily,
+    scaleFactor: Float = 1f,
+    onClick: () -> Unit,
+) {
+    Box(
+        modifier = Modifier
+            .background(CyberColors.PANEL_BG, RoundedCornerShape(6.dp))
+            .border(
+                width = (1.5 / scaleFactor).dp,
+                color = color.copy(alpha = 0.8f),
+                shape = RoundedCornerShape(6.dp),
+            )
+            .clickable(onClick = onClick)
+            .pointerHoverIcon(PointerIcon.Hand)
+            .padding(horizontal = (28 / scaleFactor).dp, vertical = (12 / scaleFactor).dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy((10 / scaleFactor).dp),
+        ) {
+            Text(
+                text       = text,
+                fontFamily = gameFont,
+                fontWeight = FontWeight.Bold,
+                fontSize   = (15 / scaleFactor).sp,
+                color      = color,
+            )
+            Box(
+                modifier = Modifier
+                    .background(color.copy(alpha = 0.15f), RoundedCornerShape(3.dp))
+                    .border((1 / scaleFactor).dp, color.copy(alpha = 0.4f), RoundedCornerShape(3.dp))
+                    .padding(horizontal = (6 / scaleFactor).dp, vertical = (2 / scaleFactor).dp),
+            ) {
+                Text(
+                    text       = hint,
+                    fontFamily = FontFamily.Monospace,
+                    fontWeight = FontWeight.Bold,
+                    fontSize   = (11 / scaleFactor).sp,
+                    color      = color.copy(alpha = 0.9f),
+                )
+            }
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------

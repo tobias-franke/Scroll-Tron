@@ -312,64 +312,19 @@ internal fun stepMultiplayer(
 // ---------------------------------------------------------------------------
 
 private fun DrawScope.drawGrid() {
-    val step = 60f
-    val lineColor = Color(0xFF0D2A0D)
-    var x = 0f
-    while (x <= GAME_WIDTH) {
-        drawLine(lineColor, Offset(x, 0f), Offset(x, GAME_HEIGHT), strokeWidth = 1f)
-        x += step
-    }
-    var y = 0f
-    while (y <= GAME_HEIGHT) {
-        drawLine(lineColor, Offset(0f, y), Offset(GAME_WIDTH, y), strokeWidth = 1f)
-        y += step
-    }
+    drawCyberGrid(GAME_WIDTH, GAME_HEIGHT)
 }
 
 private fun DrawScope.drawBorder() {
-    val strokeWidth = 3f
-    val inset = strokeWidth / 2f
-    drawRect(
-        color = Color(0xFF00FFFF).copy(alpha = 0.4f),
-        topLeft = Offset(inset, inset),
-        size = Size(GAME_WIDTH - strokeWidth, GAME_HEIGHT - strokeWidth),
-        style = Stroke(width = strokeWidth),
-    )
+    drawCyberBorder(GAME_WIDTH, GAME_HEIGHT, CyberColors.NEON_CYAN)
 }
 
 private fun DrawScope.drawTrail(path: Path, trailColor: Color) {
-    drawPath(
-        path = path,
-        color = trailColor.copy(alpha = 0.35f),
-        style = Stroke(width = 8f, cap = StrokeCap.Round, join = androidx.compose.ui.graphics.StrokeJoin.Round),
-    )
-    drawPath(
-        path = path,
-        color = trailColor,
-        style = Stroke(width = 2.5f, cap = StrokeCap.Round, join = androidx.compose.ui.graphics.StrokeJoin.Round),
-    )
+    drawLaserTrail(path, trailColor)
 }
 
 private fun DrawScope.drawHead(pos: Point, angleDeg: Float, trailColor: Color) {
-    drawCircle(
-        brush = Brush.radialGradient(
-            colors = listOf(trailColor.copy(alpha = 0.7f), Color.Transparent),
-            center = Offset(pos.x, pos.y),
-            radius = 18f,
-        ),
-        radius = 18f,
-        center = Offset(pos.x, pos.y),
-    )
-    rotate(degrees = angleDeg, pivot = Offset(pos.x, pos.y)) {
-        val path = Path().apply {
-            moveTo(pos.x + 10f, pos.y)
-            lineTo(pos.x - 7f, pos.y - 6f)
-            lineTo(pos.x - 7f, pos.y + 6f)
-            close()
-        }
-        drawPath(path, color = Color.White)
-        drawPath(path, color = trailColor, style = Stroke(width = 1.5f))
-    }
+    drawCyberHead(pos, angleDeg, trailColor)
 }
 
 
@@ -506,10 +461,14 @@ fun MultiplayerGame(
 
     val spatialGrid = remember { SpatialGrid() }
     val trailCaches = remember { mutableMapOf<Int, CachedTrailPath>() }
+    val deRezSystem = remember { DeRezSystem() }
+    val deadExplodedPlayers = remember { mutableSetOf<Int>() }
 
     val resetRoundResources = {
         spatialGrid.clear()
         trailCaches.clear()
+        deRezSystem.clear()
+        deadExplodedPlayers.clear()
     }
 
     // Sync counter — send full state every N frames (host only)
@@ -684,6 +643,13 @@ fun MultiplayerGame(
                     lastFrame = nanos
                     frameCount++
                     tickCounter++
+                    deRezSystem.update()
+                    mpState.players.forEachIndexed { i, p ->
+                        if (p.isDead && !deadExplodedPlayers.contains(i)) {
+                            deadExplodedPlayers.add(i)
+                            deRezSystem.triggerExplosion(p.position.x, p.position.y, PLAYER_COLORS[i % PLAYER_COLORS.size])
+                        }
+                    }
                     if (isHost) {
                         // Steer AI bots before stepping physics
                         var stateWithAi = mpState
@@ -836,7 +802,7 @@ fun MultiplayerGame(
 
                         drawTrail(cachedTrail.path, color)
 
-                        // Connect uncommitted tip to current head
+                        // Connect uncommitted tip to current head with laser bloom
                         if (cachedTrail.segmentCount > 0 && !player.isDead) {
                             val headX = player.position.x
                             val headY = player.position.y
@@ -844,17 +810,24 @@ fun MultiplayerGame(
                                 val start = Offset(cachedTrail.lastCommittedX, cachedTrail.lastCommittedY)
                                 val end = Offset(headX, headY)
                                 drawLine(
-                                    color = color.copy(alpha = 0.35f),
+                                    color = color.copy(alpha = 0.16f),
                                     start = start,
                                     end = end,
-                                    strokeWidth = 8f,
+                                    strokeWidth = 13f,
                                     cap = StrokeCap.Round,
                                 )
                                 drawLine(
-                                    color = color,
+                                    color = color.copy(alpha = 0.60f),
                                     start = start,
                                     end = end,
-                                    strokeWidth = 2.5f,
+                                    strokeWidth = 6f,
+                                    cap = StrokeCap.Round,
+                                )
+                                drawLine(
+                                    color = Color.White.copy(alpha = 0.95f),
+                                    start = start,
+                                    end = end,
+                                    strokeWidth = 2.2f,
                                     cap = StrokeCap.Round,
                                 )
                             }
@@ -866,11 +839,35 @@ fun MultiplayerGame(
                         }
                     }
 
+                    // De-rez explosion particles & shockwaves
+                    deRezSystem.draw(this)
+
                     // Player labels HUD (top-left)
                     val pad = 40f
-                    val topInset = 120f
-                    var currentY = pad + topInset
+                    val topInset = 70f
+                    val hudX = pad
+                    val hudY = topInset
+                    val hudW = 460f
+                    val rowH = 50f
+                    val numPlayers = mpState.players.size
+                    val hudH = 28f + numPlayers * rowH
 
+                    // Panel background & glowing border
+                    drawRoundRect(
+                        color = CyberColors.PANEL_BG,
+                        topLeft = Offset(hudX, hudY),
+                        size = Size(hudW, hudH),
+                        cornerRadius = CornerRadius(12f, 12f),
+                    )
+                    drawRoundRect(
+                        color = Color(0x5500FFFF),
+                        topLeft = Offset(hudX, hudY),
+                        size = Size(hudW, hudH),
+                        cornerRadius = CornerRadius(12f, 12f),
+                        style = Stroke(width = 1.5f),
+                    )
+
+                    var currentY = hudY + 16f
                     mpState.players.forEachIndexed { i, player ->
                         val isMe = i == myPlayerIndex
                         val colorName = PLAYER_COLOR_NAMES.getOrNull(i) ?: "P${i+1}"
@@ -880,48 +877,126 @@ fun MultiplayerGame(
                             else -> colorName
                         }
                         val color = PLAYER_COLORS[i % PLAYER_COLORS.size]
+
+                        // Status dot
+                        val dotCenterY = currentY + 16f
+                        val dotRadius = if (!player.isDead) 6.5f else 4.5f
+                        val dotColor = if (!player.isDead) color else Color(0xFF666666)
+                        if (!player.isDead) {
+                            drawCircle(
+                                color = color.copy(alpha = 0.45f),
+                                radius = 11f,
+                                center = Offset(hudX + 26f, dotCenterY),
+                            )
+                        }
+                        drawCircle(
+                            color = dotColor,
+                            radius = dotRadius,
+                            center = Offset(hudX + 26f, dotCenterY),
+                        )
+
+                        // Player Name
                         val style = TextStyle(
-                            fontSize = 30.sp,
+                            fontSize = 24.sp,
                             fontWeight = if (isMe) FontWeight.Bold else FontWeight.Normal,
                             fontFamily = gameFont,
-                            color = if (player.isDead) color.copy(alpha = 0.3f) else color,
+                            color = if (player.isDead) color.copy(alpha = 0.35f) else color,
                         )
                         val measured = textMeasurer.measure(label, style)
-                        drawText(measured, topLeft = Offset(pad, currentY))
-                        currentY += measured.size.height + 10f
+                        drawText(measured, topLeft = Offset(hudX + 48f, currentY))
+
+                        // Status text (ALIVE / ELIMINATED)
+                        val statusText = if (player.isDead) "DE-REZZED" else "ACTIVE"
+                        val statusColor = if (player.isDead) Color(0xFF884444) else CyberColors.NEON_LIME
+                        val statusStyle = TextStyle(
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Bold,
+                            fontFamily = gameFont,
+                            color = statusColor,
+                        )
+                        val statusMeasured = textMeasurer.measure(statusText, statusStyle)
+                        drawText(statusMeasured, topLeft = Offset(hudX + hudW - statusMeasured.size.width - 24f, currentY + 6f))
+
+                        currentY += rowH
                     }
 
                     // Game over or Connection Lost overlay
                     if (mpState.winner != null || connectionLost) {
-                        drawRect(Color(0xCC000000), size = Size(GAME_WIDTH, GAME_HEIGHT))
+                        drawRect(Color(0xD9010503), size = Size(GAME_WIDTH, GAME_HEIGHT))
 
                         val winnerPlayer = mpState.winner?.let { mpState.players.getOrNull(it.ordinal) }
                         val winnerColorName = mpState.winner?.let { PLAYER_COLOR_NAMES.getOrNull(it.ordinal) } ?: "OPPONENT"
                         val title = when {
                             connectionLost -> "CONNECTION LOST"
-                            mpState.winner == myPlayerId -> "YOU WIN"
+                            mpState.winner == myPlayerId -> "VICTORY"
                             winnerPlayer?.isBot == true -> "$winnerColorName [BOT] WINS"
                             mpState.winner != null -> "$winnerColorName WINS"
                             else -> "GAME OVER"
                         }
+                        val subtitle = when {
+                            connectionLost -> connector.errorMessage ?: "LOST CONTACT WITH HOST"
+                            mpState.winner == myPlayerId -> "YOU SURVIVED THE CYBER ARENA"
+                            winnerPlayer?.isBot == true -> "BOT DOMINATION"
+                            mpState.winner != null -> "ALL OTHER CYCLES DE-REZZED"
+                            else -> "MATCH CONCLUDED"
+                        }
                         val titleColor = if (connectionLost) Color(0xFFFFCC00)
-                                         else if (mpState.winner == myPlayerId) NEON_LIME
+                                         else if (mpState.winner == myPlayerId) CyberColors.NEON_LIME
                                          else Color(0xFFFF3333)
+
+                        val panelW = 1400f
+                        val panelH = 400f
+                        val panelX = GAME_WIDTH / 2f - panelW / 2f
+                        val panelY = GAME_HEIGHT / 2f - panelH / 2f - 60f
+
+                        // Victory banner card
+                        drawRoundRect(
+                            color = CyberColors.PANEL_BG,
+                            topLeft = Offset(panelX, panelY),
+                            size = Size(panelW, panelH),
+                            cornerRadius = CornerRadius(20f, 20f),
+                        )
+                        drawRoundRect(
+                            color = titleColor.copy(alpha = 0.7f),
+                            topLeft = Offset(panelX, panelY),
+                            size = Size(panelW, panelH),
+                            cornerRadius = CornerRadius(20f, 20f),
+                            style = Stroke(width = 3f),
+                        )
+                        drawCornerBrackets(panelW, panelH, titleColor, bracketLength = 40f, bracketStroke = 4f, margin = 6f)
 
                         val titleMeasured = textMeasurer.measure(
                             title,
                             TextStyle(
-                                fontSize = 120.sp,
+                                fontSize = 88.sp,
                                 fontWeight = FontWeight.Bold,
                                 fontFamily = gameFont,
                                 color = titleColor,
                             ),
                         )
+                        val subMeasured = textMeasurer.measure(
+                            subtitle,
+                            TextStyle(
+                                fontSize = 26.sp,
+                                fontWeight = FontWeight.Normal,
+                                fontFamily = gameFont,
+                                color = CyberColors.BRIGHT_TEXT.copy(alpha = 0.85f),
+                                letterSpacing = 2.sp,
+                            ),
+                        )
+
                         drawText(
                             titleMeasured,
                             topLeft = Offset(
                                 GAME_WIDTH / 2f - titleMeasured.size.width / 2f,
-                                GAME_HEIGHT / 2f - titleMeasured.size.height / 2f - 50f,
+                                panelY + 85f,
+                            ),
+                        )
+                        drawText(
+                            subMeasured,
+                            topLeft = Offset(
+                                GAME_WIDTH / 2f - subMeasured.size.width / 2f,
+                                panelY + 225f,
                             ),
                         )
                     }
@@ -1086,49 +1161,25 @@ fun MultiplayerGame(
                         if (!connectionLost && gameStarted) {
                             val humanCount = maxOf(1, mpState.players.count { !it.isBot })
                             val isReady = readyPlayers.contains(myPlayerIndex)
-                            val rematchColor = if (isReady) Color(0xFFAAAAAA) else NEON_LIME
+                            val rematchColor = if (isReady) Color(0xFFAAAAAA) else CyberColors.NEON_LIME
                             val rematchText = if (isReady) "WAITING (${readyPlayers.size}/$humanCount)" else "REMATCH"
-                            Box(
-                                modifier = Modifier
-                                    .border(
-                                        width = 1.dp,
-                                        color = rematchColor,
-                                        shape = RoundedCornerShape(4.dp),
-                                    )
-                                    .clickable(enabled = !isReady) { doRematch() }
-                                    .padding(horizontal = 24.dp, vertical = 12.dp),
-                                contentAlignment = Alignment.Center,
-                            ) {
-                                Text(
-                                    text = rematchText,
-                                    fontFamily = gameFont,
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 16.sp,
-                                    color = rematchColor,
-                                )
-                            }
+                            CyberActionButton(
+                                text = rematchText,
+                                hint = "R",
+                                color = rematchColor,
+                                gameFont = gameFont,
+                                onClick = { if (!isReady) doRematch() },
+                            )
                         }
 
                         // Back to menu
-                        Box(
-                            modifier = Modifier
-                                .border(
-                                    width = 1.dp,
-                                    color = Color(0xFFAAAAAA),
-                                    shape = RoundedCornerShape(4.dp),
-                                )
-                                .clickable { onBack() }
-                                .padding(horizontal = 24.dp, vertical = 12.dp),
-                            contentAlignment = Alignment.Center,
-                        ) {
-                            Text(
-                                text = "LEAVE",
-                                fontFamily = gameFont,
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 16.sp,
-                                color = Color(0xFFAAAAAA),
-                            )
-                        }
+                        CyberActionButton(
+                            text = "LEAVE",
+                            hint = "ESC",
+                            color = Color(0xFFAAAAAA),
+                            gameFont = gameFont,
+                            onClick = onBack,
+                        )
                     }
                 }
             }

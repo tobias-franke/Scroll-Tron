@@ -1,19 +1,31 @@
 package de.geek_hub.scroll_tron
 
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shadow
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onKeyEvent
+import androidx.compose.ui.input.key.type
+import androidx.compose.ui.input.pointer.PointerEventType
 import androidx.compose.ui.input.pointer.PointerIcon
+import androidx.compose.ui.input.pointer.onPointerEvent
 import androidx.compose.ui.input.pointer.pointerHoverIcon
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
@@ -25,28 +37,12 @@ import scrolltron.composeapp.generated.resources.Res
 import scrolltron.composeapp.generated.resources.orbitron_bold
 import scrolltron.composeapp.generated.resources.orbitron_regular
 import kotlin.math.sin
-import androidx.compose.foundation.focusable
-import androidx.compose.ui.focus.FocusRequester
-import androidx.compose.ui.focus.focusRequester
-import androidx.compose.ui.input.key.Key
-import androidx.compose.ui.input.key.KeyEventType
-import androidx.compose.ui.input.key.key
-import androidx.compose.ui.input.key.onKeyEvent
-import androidx.compose.ui.input.key.type
-
-// ---------------------------------------------------------------------------
-// Neon palette (shared with game)
-// ---------------------------------------------------------------------------
-
-private val NEON_CYAN   = Color(0xFF00FFFF)
-private val NEON_PINK   = Color(0xFFFF00FF)
-private val GRID_COLOR  = Color(0xFF0D2A0D)
-private val BG_COLOR    = Color(0xFF020C02)
 
 // ---------------------------------------------------------------------------
 // Main Menu
 // ---------------------------------------------------------------------------
 
+@OptIn(ExperimentalComposeUiApi::class)
 @Composable
 fun MainMenu(
     onSingleplayer: () -> Unit,
@@ -86,32 +82,20 @@ fun MainMenu(
             },
         contentAlignment = Alignment.Center,
     ) {
-        // Animated grid background
+        // Atmospheric Cyber Grid & Scanline Background
         Canvas(modifier = Modifier.fillMaxSize()) {
-            drawRect(BG_COLOR)
+            drawCyberGrid(size.width, size.height, step = 60f)
+            drawCornerBrackets(size.width, size.height, CyberColors.NEON_CYAN.copy(alpha = 0.5f), bracketLength = 36f, bracketStroke = 2.5f, margin = 12f)
 
-            // Grid
-            val step = 60f
-            var x = 0f
-            while (x <= size.width) {
-                drawLine(GRID_COLOR, Offset(x, 0f), Offset(x, size.height), strokeWidth = 1f)
-                x += step
-            }
-            var y = 0f
-            while (y <= size.height) {
-                drawLine(GRID_COLOR, Offset(0f, y), Offset(size.width, y), strokeWidth = 1f)
-                y += step
-            }
-
-            // Subtle horizontal scan line effect
-            val scanY = ((frameCount * 80f) % (size.height + 200f)) - 100f
+            // Animated horizontal scan beam
+            val scanY = ((frameCount * 75f) % (size.height + 250f)) - 125f
             drawLine(
                 brush = Brush.horizontalGradient(
-                    colors = listOf(Color.Transparent, NEON_CYAN.copy(alpha = 0.08f), Color.Transparent),
+                    colors = listOf(Color.Transparent, CyberColors.NEON_CYAN.copy(alpha = 0.12f), Color.Transparent),
                 ),
                 start = Offset(0f, scanY),
                 end = Offset(size.width, scanY),
-                strokeWidth = 60f,
+                strokeWidth = 70f,
             )
         }
 
@@ -124,49 +108,74 @@ fun MainMenu(
             Text(
                 text = "SCROLL",
                 style = TextStyle(
-                    fontSize = 72.sp,
+                    fontSize = 76.sp,
                     fontWeight = FontWeight.Bold,
                     fontFamily = gameFont,
-                    color = NEON_CYAN,
+                    color = CyberColors.NEON_CYAN,
+                    letterSpacing = 4.sp,
                     shadow = Shadow(
-                        color = NEON_CYAN.copy(alpha = glowAlpha * 0.6f),
+                        color = CyberColors.NEON_CYAN.copy(alpha = glowAlpha * 0.7f),
                         offset = Offset.Zero,
-                        blurRadius = 30f,
+                        blurRadius = 36f,
                     ),
                 ),
             )
             Text(
                 text = "TRON",
                 style = TextStyle(
-                    fontSize = 72.sp,
+                    fontSize = 76.sp,
                     fontWeight = FontWeight.Bold,
                     fontFamily = gameFont,
-                    color = NEON_PINK,
+                    color = CyberColors.NEON_PINK,
+                    letterSpacing = 6.sp,
                     shadow = Shadow(
-                        color = NEON_PINK.copy(alpha = glowAlpha * 0.6f),
+                        color = CyberColors.NEON_PINK.copy(alpha = glowAlpha * 0.7f),
                         offset = Offset.Zero,
-                        blurRadius = 30f,
+                        blurRadius = 36f,
                     ),
                 ),
             )
 
-            Spacer(modifier = Modifier.height(64.dp))
+            Spacer(modifier = Modifier.height(14.dp))
+
+            // Subtitle Tagline with cyber accent
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                Box(modifier = Modifier.width(32.dp).height(1.dp).background(CyberColors.NEON_CYAN.copy(alpha = 0.5f)))
+                Text(
+                    text = "LIGHT CYCLE ARENA",
+                    style = TextStyle(
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold,
+                        fontFamily = gameFont,
+                        color = CyberColors.DIM_TEXT,
+                        letterSpacing = 4.sp,
+                    ),
+                )
+                Box(modifier = Modifier.width(32.dp).height(1.dp).background(CyberColors.NEON_PINK.copy(alpha = 0.5f)))
+            }
+
+            Spacer(modifier = Modifier.height(56.dp))
 
             // Singleplayer button
             MenuButton(
                 text = "SINGLEPLAYER",
-                color = NEON_CYAN,
+                subtitle = "SOLO SURVIVAL",
+                color = CyberColors.NEON_CYAN,
                 gameFont = gameFont,
                 onClick = onSingleplayer,
             )
 
-            Spacer(modifier = Modifier.height(20.dp))
+            Spacer(modifier = Modifier.height(18.dp))
 
             // Multiplayer button
             if (multiplayerSupported) {
                 MenuButton(
                     text = "MULTIPLAYER",
-                    color = NEON_PINK,
+                    subtitle = "UP TO 4 PLAYERS P2P",
+                    color = CyberColors.NEON_PINK,
                     gameFont = gameFont,
                     onClick = onMultiplayer,
                 )
@@ -174,13 +183,14 @@ fun MainMenu(
                 // Disabled multiplayer on non-web platforms
                 Box(
                     modifier = Modifier
-                        .width(280.dp)
+                        .width(300.dp)
+                        .background(Color(0x44000000), RoundedCornerShape(8.dp))
                         .border(
                             width = 1.dp,
-                            color = Color(0xFF333333),
-                            shape = RoundedCornerShape(4.dp),
+                            color = Color(0xFF1B3322),
+                            shape = RoundedCornerShape(8.dp),
                         )
-                        .padding(horizontal = 36.dp, vertical = 16.dp),
+                        .padding(horizontal = 32.dp, vertical = 14.dp),
                     contentAlignment = Alignment.Center,
                 ) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -188,50 +198,102 @@ fun MainMenu(
                             text = "MULTIPLAYER",
                             fontFamily = gameFont,
                             fontWeight = FontWeight.Bold,
-                            fontSize = 18.sp,
-                            color = Color(0xFF444444),
+                            fontSize = 17.sp,
+                            color = Color(0xFF445548),
                         )
+                        Spacer(modifier = Modifier.height(3.dp))
                         Text(
-                            text = "WEB ONLY",
+                            text = "WEB BROWSER ONLY",
                             fontFamily = gameFont,
                             fontSize = 10.sp,
-                            color = Color(0xFF333333),
+                            color = Color(0xFF334438),
+                            letterSpacing = 1.sp,
                         )
                     }
                 }
             }
+        }
+
+        // Bottom footer hint
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(bottom = 20.dp),
+            contentAlignment = Alignment.BottomCenter,
+        ) {
+            Text(
+                text = "STEER WITH MOUSE WHEEL • ESC TO QUIT",
+                fontFamily = gameFont,
+                fontSize = 11.sp,
+                color = CyberColors.DIM_TEXT.copy(alpha = 0.6f),
+                letterSpacing = 1.sp,
+            )
         }
     }
 
     LaunchedEffect(Unit) { focusRequester.requestFocus() }
 }
 
+@OptIn(ExperimentalComposeUiApi::class)
 @Composable
 private fun MenuButton(
     text: String,
+    subtitle: String? = null,
     color: Color,
     gameFont: FontFamily,
     onClick: () -> Unit,
 ) {
+    var isHovered by remember { mutableStateOf(false) }
+
+    val bgColor = if (isHovered) {
+        color.copy(alpha = 0.16f)
+    } else {
+        CyberColors.PANEL_BG
+    }
+
+    val borderColor = if (isHovered) {
+        color
+    } else {
+        color.copy(alpha = 0.6f)
+    }
+
     Box(
         modifier = Modifier
-            .width(280.dp)
+            .width(300.dp)
+            .background(bgColor, RoundedCornerShape(8.dp))
             .border(
-                width = 1.dp,
-                color = color.copy(alpha = 0.7f),
-                shape = RoundedCornerShape(4.dp),
+                width = if (isHovered) 2.dp else 1.2.dp,
+                color = borderColor,
+                shape = RoundedCornerShape(8.dp),
             )
+            .onPointerEvent(PointerEventType.Enter) { isHovered = true }
+            .onPointerEvent(PointerEventType.Exit) { isHovered = false }
             .clickable(onClick = onClick)
             .pointerHoverIcon(PointerIcon.Hand)
-            .padding(horizontal = 36.dp, vertical = 16.dp),
+            .padding(horizontal = 32.dp, vertical = 14.dp),
         contentAlignment = Alignment.Center,
     ) {
-        Text(
-            text = text,
-            fontFamily = gameFont,
-            fontWeight = FontWeight.Bold,
-            fontSize = 18.sp,
-            color = color,
-        )
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Text(
+                text = text,
+                fontFamily = gameFont,
+                fontWeight = FontWeight.Bold,
+                fontSize = 18.sp,
+                color = if (isHovered) Color.White else color,
+                style = TextStyle(
+                    shadow = if (isHovered) Shadow(color = color, blurRadius = 16f) else null,
+                ),
+            )
+            if (subtitle != null) {
+                Spacer(modifier = Modifier.height(3.dp))
+                Text(
+                    text = subtitle,
+                    fontFamily = gameFont,
+                    fontSize = 10.sp,
+                    color = if (isHovered) color else color.copy(alpha = 0.7f),
+                    letterSpacing = 1.sp,
+                )
+            }
+        }
     }
 }
