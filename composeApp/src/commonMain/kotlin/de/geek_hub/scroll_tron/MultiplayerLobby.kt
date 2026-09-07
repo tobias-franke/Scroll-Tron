@@ -262,7 +262,6 @@ fun MultiplayerLobby(
                                     .border(2.dp, codeBorderColor, RoundedCornerShape(8.dp))
                                     .clickable {
                                         if (connector.roomCode.isNotEmpty()) {
-                                            SoundManager.playClick()
                                             copyToClipboard(connector.roomCode)
                                             copiedCode = true
                                         }
@@ -333,7 +332,6 @@ fun MultiplayerLobby(
                                             .height(72.dp)
                                             .border(1.5.dp, color, RoundedCornerShape(6.dp))
                                             .clickable(enabled = slotClickable) {
-                                                SoundManager.playClick()
                                                 if (isBot) {
                                                     aiCount = maxOf(0, aiCount - 1)
                                                 } else if (isEmpty && totalPlayers < 4) {
@@ -623,7 +621,6 @@ private fun LobbyButton(
             .height(52.dp)
             .border(1.dp, color.copy(alpha = 0.7f), RoundedCornerShape(4.dp))
             .clickable {
-                SoundManager.playClick()
                 onClick()
             }
             .pointerHoverIcon(PointerIcon.Hand)

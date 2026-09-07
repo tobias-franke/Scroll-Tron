@@ -515,7 +515,6 @@ fun SingleplayerGame(onBack: () -> Unit = {}) {
     val deRezSystem   = remember { DeRezSystem() }
     var animTick      by remember { mutableStateOf(0L) }
     var showEndScreen by remember { mutableStateOf(false) }
-    var isNewBest     by remember { mutableStateOf(false) }
 
     val doRestart: () -> Unit = {
         showEndScreen = false
@@ -535,11 +534,6 @@ fun SingleplayerGame(onBack: () -> Unit = {}) {
             showEndScreen = false
             delay(700L)
             showEndScreen = true
-            if (isNewBest) {
-                SoundManager.playVictory()
-            } else {
-                SoundManager.playGameOver()
-            }
         } else {
             showEndScreen = false
         }
@@ -582,7 +576,6 @@ fun SingleplayerGame(onBack: () -> Unit = {}) {
                             SoundManager.playCrash()
                             deathCount++
                             val score = gameState.trail.size
-                            isNewBest = score > 0 && score > highScore && highScore > 0
                             if (score > highScore) highScore = score
                             val crashX = gameState.position.x.coerceIn(0f, canvasWidth)
                             val crashY = gameState.position.y.coerceIn(0f, canvasHeight)
@@ -620,7 +613,6 @@ fun SingleplayerGame(onBack: () -> Unit = {}) {
                 val delta = event.changes.firstOrNull()?.scrollDelta?.y ?: 0f
                 if (!gameState.isDead && delta != 0f) {
                     showHint = false
-                    SoundManager.playSteer()
                     val sign = if (delta > 0f) 1f else -1f
                     gameState = gameState.copy(
                         angularVelocity = gameState.angularVelocity + sign * STEERING_SENSITIVITY
@@ -770,7 +762,6 @@ fun SingleplayerGame(onBack: () -> Unit = {}) {
                                 shape = RoundedCornerShape(4.dp),
                             )
                             .clickable {
-                                SoundManager.playClick()
                                 doRestart()
                             }
                             .padding(horizontal = (36 / scaleFactor).dp, vertical = (12 / scaleFactor).dp),
@@ -793,7 +784,6 @@ fun SingleplayerGame(onBack: () -> Unit = {}) {
                                 shape = RoundedCornerShape(4.dp),
                             )
                             .clickable {
-                                SoundManager.playClick()
                                 onBack()
                             }
                             .padding(horizontal = (36 / scaleFactor).dp, vertical = (12 / scaleFactor).dp),

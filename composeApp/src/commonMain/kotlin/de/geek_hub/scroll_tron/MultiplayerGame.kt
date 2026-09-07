@@ -603,15 +603,8 @@ fun MultiplayerGame(
             showGameOverScreen = false
             delay(700L)
             showGameOverScreen = true
-            val myPlayerId = if (myPlayerIndex != -1) PlayerId.entries[myPlayerIndex] else null
-            if (mpState.winner == myPlayerId) {
-                SoundManager.playVictory()
-            } else {
-                SoundManager.playGameOver()
-            }
         } else if (connectionLost) {
             showGameOverScreen = true
-            SoundManager.playGameOver()
         } else {
             showGameOverScreen = false
         }
@@ -898,7 +891,6 @@ fun MultiplayerGame(
             .onPointerEvent(PointerEventType.Scroll) { event ->
                 val delta = event.changes.firstOrNull()?.scrollDelta?.y ?: 0f
                 if (delta != 0f && gameStarted && mpState.winner == null) {
-                    SoundManager.playSteer()
                     val sign = if (delta > 0f) 1f else -1f
                     val impulse = sign * STEERING_SENSITIVITY
                     if (isHost) {
@@ -1224,7 +1216,6 @@ fun MultiplayerGame(
                                         shape = RoundedCornerShape(4.dp),
                                     )
                                     .clickable(enabled = !isReady) {
-                                        SoundManager.playClick()
                                         doRematch()
                                     }
                                     .padding(horizontal = 24.dp, vertical = 12.dp),
@@ -1249,7 +1240,6 @@ fun MultiplayerGame(
                                     shape = RoundedCornerShape(4.dp),
                                 )
                                 .clickable {
-                                    SoundManager.playClick()
                                     onBack()
                                 }
                                 .padding(horizontal = 24.dp, vertical = 12.dp),

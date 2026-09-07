@@ -25,29 +25,13 @@ class JvmAudioTest {
 
     @Test
     fun testGenerateSoundWaveforms() {
-        val steer = generateSteerSound()
-        analyzeSound("STEER", steer)
-        assertTrue(steer.isNotEmpty())
-
-        val click = generateClickSound()
-        analyzeSound("CLICK", click)
-        assertTrue(click.isNotEmpty())
-
-        val crash = generateCrashSound()
-        analyzeSound("CRASH", crash)
-        assertTrue(crash.isNotEmpty())
-
         val start = generateStartSound()
         analyzeSound("START", start)
         assertTrue(start.isNotEmpty())
 
-        val gameOver = generateGameOverSound()
-        analyzeSound("GAME_OVER", gameOver)
-        assertTrue(gameOver.isNotEmpty())
-
-        val victory = generateVictorySound()
-        analyzeSound("VICTORY", victory)
-        assertTrue(victory.isNotEmpty())
+        val crash = generateCrashSound()
+        analyzeSound("CRASH", crash)
+        assertTrue(crash.isNotEmpty())
     }
 
     @Test

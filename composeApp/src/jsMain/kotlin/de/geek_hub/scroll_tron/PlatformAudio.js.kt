@@ -25,41 +25,51 @@ private fun jsPlayAudio(soundId: Int) {
         }
         var t = ctx.currentTime;
 
-        if (soundId === 0) { // STEER: Punchy low-mid Lightcycle Thruster Impulse
-            var dur = 0.045;
-            var punchOsc = ctx.createOscillator();
-            var punchGain = ctx.createGain();
-            punchOsc.type = 'sine';
-            punchOsc.frequency.setValueAtTime(140, t);
-            punchOsc.frequency.exponentialRampToValueAtTime(50, t + dur);
-            punchGain.gain.setValueAtTime(0.35, t);
-            punchGain.gain.exponentialRampToValueAtTime(0.001, t + dur);
-            punchOsc.connect(punchGain);
-            punchGain.connect(ctx.destination);
-            punchOsc.start(t);
-            punchOsc.stop(t + dur);
-
-            var bufSize = Math.floor(ctx.sampleRate * dur);
-            var noiseBuf = ctx.createBuffer(1, bufSize, ctx.sampleRate);
-            var out = noiseBuf.getChannelData(0);
-            for (var i = 0; i < bufSize; i++) {
-                out[i] = Math.random() * 2 - 1;
-            }
-            var noise = ctx.createBufferSource();
-            noise.buffer = noiseBuf;
+        if (soundId === 0) { // GAME_START: Lightcycle Grid Ignition (Chorused Reese Engine + Rising Resonant Filter)
+            var dur = 0.45;
             var filter = ctx.createBiquadFilter();
             filter.type = 'lowpass';
-            filter.frequency.setValueAtTime(550, t);
-            filter.frequency.exponentialRampToValueAtTime(80, t + dur);
-            filter.Q.setValueAtTime(2.0, t);
-            var jetGain = ctx.createGain();
-            jetGain.gain.setValueAtTime(0.2, t);
-            jetGain.gain.exponentialRampToValueAtTime(0.001, t + dur);
-            noise.connect(filter);
-            filter.connect(jetGain);
-            jetGain.connect(ctx.destination);
-            noise.start(t);
-            noise.stop(t + dur);
+            filter.frequency.setValueAtTime(120, t);
+            filter.frequency.exponentialRampToValueAtTime(2800, t + 0.35);
+            filter.Q.setValueAtTime(3.5, t);
+
+            var masterGain = ctx.createGain();
+            masterGain.gain.setValueAtTime(0.01, t);
+            masterGain.gain.linearRampToValueAtTime(0.3, t + 0.15);
+            masterGain.gain.exponentialRampToValueAtTime(0.001, t + dur);
+
+            filter.connect(masterGain);
+            masterGain.connect(ctx.destination);
+
+            // Detuned dual saws for analog chorused roar
+            var osc1 = ctx.createOscillator();
+            osc1.type = 'sawtooth';
+            osc1.frequency.setValueAtTime(70, t);
+            osc1.frequency.exponentialRampToValueAtTime(180, t + dur);
+            osc1.connect(filter);
+            osc1.start(t);
+            osc1.stop(t + dur);
+
+            var osc2 = ctx.createOscillator();
+            osc2.type = 'sawtooth';
+            osc2.frequency.setValueAtTime(73, t);
+            osc2.frequency.exponentialRampToValueAtTime(183, t + dur);
+            osc2.connect(filter);
+            osc2.start(t);
+            osc2.stop(t + dur);
+
+            // Grid lock high ping
+            var pingOsc = ctx.createOscillator();
+            var pingGain = ctx.createGain();
+            pingOsc.type = 'sine';
+            pingOsc.frequency.setValueAtTime(1200, t + 0.22);
+            pingGain.gain.setValueAtTime(0.001, t);
+            pingGain.gain.setValueAtTime(0.12, t + 0.22);
+            pingGain.gain.exponentialRampToValueAtTime(0.001, t + 0.38);
+            pingOsc.connect(pingGain);
+            pingGain.connect(ctx.destination);
+            pingOsc.start(t + 0.22);
+            pingOsc.stop(t + 0.38);
         } else if (soundId === 1) { // CRASH: Tron De-Rez Disintegration (Sub Boom + Glassy Shatter + Laser Zap)
             var dur = 0.45;
 
@@ -114,119 +124,6 @@ private fun jsPlayAudio(soundId: Int) {
             laserGain.connect(ctx.destination);
             laserOsc.start(t);
             laserOsc.stop(t + 0.35);
-        } else if (soundId === 2) { // GAME_START: Lightcycle Grid Ignition (Chorused Reese Engine + Rising Resonant Filter)
-            var dur = 0.45;
-            var filter = ctx.createBiquadFilter();
-            filter.type = 'lowpass';
-            filter.frequency.setValueAtTime(120, t);
-            filter.frequency.exponentialRampToValueAtTime(2800, t + 0.35);
-            filter.Q.setValueAtTime(3.5, t);
-
-            var masterGain = ctx.createGain();
-            masterGain.gain.setValueAtTime(0.01, t);
-            masterGain.gain.linearRampToValueAtTime(0.3, t + 0.15);
-            masterGain.gain.exponentialRampToValueAtTime(0.001, t + dur);
-
-            filter.connect(masterGain);
-            masterGain.connect(ctx.destination);
-
-            // Detuned dual saws for analog chorused roar
-            var osc1 = ctx.createOscillator();
-            osc1.type = 'sawtooth';
-            osc1.frequency.setValueAtTime(70, t);
-            osc1.frequency.exponentialRampToValueAtTime(180, t + dur);
-            osc1.connect(filter);
-            osc1.start(t);
-            osc1.stop(t + dur);
-
-            var osc2 = ctx.createOscillator();
-            osc2.type = 'sawtooth';
-            osc2.frequency.setValueAtTime(73, t);
-            osc2.frequency.exponentialRampToValueAtTime(183, t + dur);
-            osc2.connect(filter);
-            osc2.start(t);
-            osc2.stop(t + dur);
-
-            // Grid lock high ping
-            var pingOsc = ctx.createOscillator();
-            var pingGain = ctx.createGain();
-            pingOsc.type = 'sine';
-            pingOsc.frequency.setValueAtTime(1200, t + 0.22);
-            pingGain.gain.setValueAtTime(0.001, t);
-            pingGain.gain.setValueAtTime(0.12, t + 0.22);
-            pingGain.gain.exponentialRampToValueAtTime(0.001, t + 0.38);
-            pingOsc.connect(pingGain);
-            pingGain.connect(ctx.destination);
-            pingOsc.start(t + 0.22);
-            pingOsc.stop(t + 0.38);
-        } else if (soundId === 3) { // GAME_OVER: Grid Blackout / Void Powerdown (Dark Detuned Saws Choked by Resonant Lowpass)
-            var dur = 0.65;
-            var filter = ctx.createBiquadFilter();
-            filter.type = 'lowpass';
-            filter.frequency.setValueAtTime(2200, t);
-            filter.frequency.exponentialRampToValueAtTime(35, t + dur);
-            filter.Q.setValueAtTime(5.0, t);
-
-            var gain = ctx.createGain();
-            gain.gain.setValueAtTime(0.28, t);
-            gain.gain.exponentialRampToValueAtTime(0.001, t + dur);
-
-            filter.connect(gain);
-            gain.connect(ctx.destination);
-
-            var osc1 = ctx.createOscillator();
-            osc1.type = 'sawtooth';
-            osc1.frequency.setValueAtTime(110, t);
-            osc1.connect(filter);
-            osc1.start(t);
-            osc1.stop(t + dur);
-
-            var osc2 = ctx.createOscillator();
-            osc2.type = 'sawtooth';
-            osc2.frequency.setValueAtTime(108, t);
-            osc2.connect(filter);
-            osc2.start(t);
-            osc2.stop(t + dur);
-        } else if (soundId === 4) { // VICTORY: Tron Legacy Cyber Synthwave Polyphonic Chord Swell (D minor triad + 7th pad)
-            var dur = 0.75;
-            var freqs = [146.83, 220.0, 293.66, 349.23];
-
-            var filter = ctx.createBiquadFilter();
-            filter.type = 'lowpass';
-            filter.frequency.setValueAtTime(500, t);
-            filter.frequency.exponentialRampToValueAtTime(3200, t + 0.18);
-            filter.frequency.exponentialRampToValueAtTime(650, t + dur);
-            filter.Q.setValueAtTime(2.5, t);
-
-            var gain = ctx.createGain();
-            gain.gain.setValueAtTime(0.01, t);
-            gain.gain.linearRampToValueAtTime(0.25, t + 0.1);
-            gain.gain.exponentialRampToValueAtTime(0.001, t + dur);
-
-            filter.connect(gain);
-            gain.connect(ctx.destination);
-
-            for (var f = 0; f < freqs.length; f++) {
-                var osc = ctx.createOscillator();
-                osc.type = (f % 2 === 0) ? 'sawtooth' : 'triangle';
-                osc.frequency.setValueAtTime(freqs[f], t);
-                osc.connect(filter);
-                osc.start(t);
-                osc.stop(t + dur);
-            }
-        } else if (soundId === 5) { // UI_CLICK: Crisp Holographic Touchscreen Tap (Clearly Audible Micro-Transient Pop)
-            var dur = 0.05;
-            var osc = ctx.createOscillator();
-            var gain = ctx.createGain();
-            osc.type = 'sine';
-            osc.frequency.setValueAtTime(750, t);
-            osc.frequency.exponentialRampToValueAtTime(350, t + dur);
-            gain.gain.setValueAtTime(0.3, t);
-            gain.gain.exponentialRampToValueAtTime(0.001, t + dur);
-            osc.connect(gain);
-            gain.connect(ctx.destination);
-            osc.start(t);
-            osc.stop(t + dur);
         }
     } catch(e) {}
     """)

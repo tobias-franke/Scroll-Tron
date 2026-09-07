@@ -25,30 +25,22 @@ class SoundManagerTest {
     @Test
     fun testPlaySoundsDoNotThrow() {
         SoundManager.isMuted = false
-        SoundManager.playClick()
-        SoundManager.playSteer()
         SoundManager.playStart()
         SoundManager.playCrash()
-        SoundManager.playGameOver()
-        SoundManager.playVictory()
 
         // When muted
         SoundManager.isMuted = true
-        SoundManager.playClick()
-        SoundManager.playSteer()
         SoundManager.playStart()
         SoundManager.playCrash()
-        SoundManager.playGameOver()
-        SoundManager.playVictory()
         SoundManager.isMuted = false
     }
 
     @Test
-    fun testSteerThrottling() {
+    fun testRapidPlaybackDoesNotThrow() {
         SoundManager.isMuted = false
-        // Rapid calls to playSteer should not throw or cause failure
         repeat(10) {
-            SoundManager.playSteer()
+            SoundManager.playStart()
+            SoundManager.playCrash()
         }
     }
 }

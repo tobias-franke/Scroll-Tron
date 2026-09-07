@@ -19,15 +19,9 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import kotlin.time.TimeSource
-
 enum class SoundEffect {
-    STEER,
-    CRASH,
     GAME_START,
-    GAME_OVER,
-    VICTORY,
-    UI_CLICK,
+    CRASH,
 }
 
 expect object PlatformAudio {
@@ -37,40 +31,19 @@ expect object PlatformAudio {
 object SoundManager {
     var isMuted: Boolean by mutableStateOf(false)
 
-    private val timeSource = TimeSource.Monotonic
-    private var lastSteerMark = timeSource.markNow()
-    private var hasSteeredBefore = false
-
     fun toggleMute() {
         isMuted = !isMuted
-        if (!isMuted) {
-            play(SoundEffect.UI_CLICK)
-        }
     }
 
     fun play(sound: SoundEffect) {
         if (isMuted) return
-
-        if (sound == SoundEffect.STEER) {
-            if (hasSteeredBefore) {
-                val elapsed = lastSteerMark.elapsedNow().inWholeMilliseconds
-                if (elapsed < 60) return
-            }
-            hasSteeredBefore = true
-            lastSteerMark = timeSource.markNow()
-        }
-
         try {
             PlatformAudio.play(sound)
         } catch (_: Throwable) {}
     }
 
-    fun playSteer() = play(SoundEffect.STEER)
-    fun playCrash() = play(SoundEffect.CRASH)
     fun playStart() = play(SoundEffect.GAME_START)
-    fun playGameOver() = play(SoundEffect.GAME_OVER)
-    fun playVictory() = play(SoundEffect.VICTORY)
-    fun playClick() = play(SoundEffect.UI_CLICK)
+    fun playCrash() = play(SoundEffect.CRASH)
 }
 
 @Composable

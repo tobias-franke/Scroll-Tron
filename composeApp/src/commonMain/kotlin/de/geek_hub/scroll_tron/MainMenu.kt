@@ -169,10 +169,7 @@ fun MainMenu(
                 text = "SINGLEPLAYER",
                 color = NEON_CYAN,
                 gameFont = gameFont,
-                onClick = {
-                    SoundManager.playClick()
-                    onSingleplayer()
-                },
+                onClick = onSingleplayer,
             )
 
             Spacer(modifier = Modifier.height(20.dp))
@@ -183,10 +180,7 @@ fun MainMenu(
                     text = "MULTIPLAYER",
                     color = NEON_PINK,
                     gameFont = gameFont,
-                    onClick = {
-                        SoundManager.playClick()
-                        onMultiplayer()
-                    },
+                    onClick = onMultiplayer,
                 )
             } else {
                 // Disabled multiplayer on non-web platforms
