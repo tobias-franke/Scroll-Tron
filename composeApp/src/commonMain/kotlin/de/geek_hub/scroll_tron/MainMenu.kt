@@ -79,9 +79,12 @@ fun MainMenu(
             .focusRequester(focusRequester)
             .focusable()
             .onKeyEvent { event ->
-                if (event.type == KeyEventType.KeyDown && event.key == Key.Escape) {
-                    onExit()
-                    true
+                if (event.type == KeyEventType.KeyDown) {
+                    when (event.key) {
+                        Key.Escape -> { onExit(); true }
+                        Key.M -> { SoundManager.toggleMute(); true }
+                        else -> false
+                    }
                 } else false
             },
         contentAlignment = Alignment.Center,
@@ -200,6 +203,16 @@ fun MainMenu(
                     }
                 }
             }
+        }
+
+        // Sound toggle button in top-right corner (rendered on top of Canvas & Menu)
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(24.dp),
+            contentAlignment = Alignment.TopEnd,
+        ) {
+            SoundToggleButton(gameFont = gameFont)
         }
     }
 

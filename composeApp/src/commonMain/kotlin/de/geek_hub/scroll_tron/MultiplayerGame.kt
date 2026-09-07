@@ -585,6 +585,7 @@ fun MultiplayerGame(
     LaunchedEffect(mpState.players) {
         mpState.players.forEachIndexed { i, player ->
             if (player.isDead && !prevDeadPlayers.contains(i)) {
+                SoundManager.playCrash()
                 prevDeadPlayers = prevDeadPlayers + i
                 trailCaches[i]?.reset()
                 val color = PLAYER_COLORS[i % PLAYER_COLORS.size]
@@ -622,6 +623,7 @@ fun MultiplayerGame(
 
     LaunchedEffect(Unit) {
         if (isHost) {
+            SoundManager.playStart()
             val totalPlayers = minOf(4, maxOf(1, connector.connectedPlayers) + aiCount)
             resetRoundResources()
             mpState = mpInitialState(totalPlayers, aiCount)
@@ -651,6 +653,7 @@ fun MultiplayerGame(
                 connectionLost = false
                 roundId++
                 gameStarted = true
+                SoundManager.playStart()
             }
         }
 
@@ -709,6 +712,7 @@ fun MultiplayerGame(
                 readyPlayers = emptySet()
                 connectionLost = false
                 roundId++
+                SoundManager.playStart()
                 connector.sendGameStart(GAME_WIDTH, GAME_HEIGHT)
             }
         }
@@ -851,6 +855,7 @@ fun MultiplayerGame(
                 readyPlayers = emptySet()
                 connectionLost = false
                 roundId++
+                SoundManager.playStart()
                 connector.sendGameStart(GAME_WIDTH, GAME_HEIGHT)
             }
         }
@@ -870,6 +875,10 @@ fun MultiplayerGame(
                             isLeaving = true
                             onBack()
                         }
+                        true
+                    }
+                    Key.M -> {
+                        SoundManager.toggleMute()
                         true
                     }
                     Key.R -> if (showGameOverScreen && mpState.winner != null) { doRematch(); true } else false
@@ -1207,7 +1216,9 @@ fun MultiplayerGame(
                                         color = rematchColor,
                                         shape = RoundedCornerShape(4.dp),
                                     )
-                                    .clickable(enabled = !isReady) { doRematch() }
+                                    .clickable(enabled = !isReady) {
+                                        doRematch()
+                                    }
                                     .padding(horizontal = 24.dp, vertical = 12.dp),
                                 contentAlignment = Alignment.Center,
                             ) {
@@ -1229,7 +1240,9 @@ fun MultiplayerGame(
                                     color = Color(0xFFAAAAAA),
                                     shape = RoundedCornerShape(4.dp),
                                 )
-                                .clickable { onBack() }
+                                .clickable {
+                                    onBack()
+                                }
                                 .padding(horizontal = 24.dp, vertical = 12.dp),
                             contentAlignment = Alignment.Center,
                         ) {

@@ -620,7 +620,9 @@ private fun LobbyButton(
         modifier = modifier
             .height(52.dp)
             .border(1.dp, color.copy(alpha = 0.7f), RoundedCornerShape(4.dp))
-            .clickable(onClick = onClick)
+            .clickable {
+                onClick()
+            }
             .pointerHoverIcon(PointerIcon.Hand)
             .padding(horizontal = 24.dp),
         contentAlignment = Alignment.Center,
