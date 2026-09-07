@@ -1,6 +1,7 @@
 package de.geek_hub.scroll_tron
 
 import kotlin.test.Test
+import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 class JvmAudioTest {
@@ -32,6 +33,11 @@ class JvmAudioTest {
         val crash = generateCrashSound()
         analyzeSound("CRASH", crash)
         assertTrue(crash.isNotEmpty())
+
+        val bgm = generateBackgroundMusic()
+        analyzeSound("BGM", bgm)
+        assertTrue(bgm.isNotEmpty())
+        assertEquals(352800 * 2, bgm.size)
     }
 
     @Test
@@ -40,5 +46,10 @@ class JvmAudioTest {
         for (effect in SoundEffect.entries) {
             PlatformAudio.play(effect)
         }
+        PlatformAudio.startMusic()
+        PlatformAudio.duckMusic(100L)
+        PlatformAudio.setMusicMuted(true)
+        PlatformAudio.setMusicMuted(false)
+        PlatformAudio.stopMusic()
     }
 }

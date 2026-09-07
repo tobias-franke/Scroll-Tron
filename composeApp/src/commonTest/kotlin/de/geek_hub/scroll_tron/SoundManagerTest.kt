@@ -43,4 +43,12 @@ class SoundManagerTest {
             SoundManager.playCrash()
         }
     }
+
+    @Test
+    fun testMusicLifecycleDoesNotThrow() {
+        SoundManager.startMusic()
+        SoundManager.toggleMute()
+        SoundManager.toggleMute()
+        SoundManager.stopMusic()
+    }
 }

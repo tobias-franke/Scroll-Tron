@@ -822,6 +822,10 @@ fun App(onExit: () -> Unit = {}) {
     var mpConnector by remember { mutableStateOf<MultiplayerConnector?>(null) }
     var mpIsHost by remember { mutableStateOf(false) }
 
+    LaunchedEffect(Unit) {
+        SoundManager.startMusic()
+    }
+
     when (val screen = currentScreen) {
         is Screen.MainMenu -> {
             MainMenu(

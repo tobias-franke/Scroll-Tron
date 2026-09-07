@@ -27,6 +27,10 @@ enum class SoundEffect {
 
 expect object PlatformAudio {
     fun play(sound: SoundEffect)
+    fun startMusic()
+    fun stopMusic()
+    fun setMusicMuted(muted: Boolean)
+    fun duckMusic(durationMs: Long = 600L)
 }
 
 object SoundManager {
@@ -34,6 +38,22 @@ object SoundManager {
 
     fun toggleMute() {
         isMuted = !isMuted
+        try {
+            PlatformAudio.setMusicMuted(isMuted)
+        } catch (_: Throwable) {}
+    }
+
+    fun startMusic() {
+        try {
+            PlatformAudio.setMusicMuted(isMuted)
+            PlatformAudio.startMusic()
+        } catch (_: Throwable) {}
+    }
+
+    fun stopMusic() {
+        try {
+            PlatformAudio.stopMusic()
+        } catch (_: Throwable) {}
     }
 
     fun play(sound: SoundEffect) {
@@ -44,7 +64,15 @@ object SoundManager {
     }
 
     fun playStart() = play(SoundEffect.GAME_START)
-    fun playCrash() = play(SoundEffect.CRASH)
+
+    fun playCrash() {
+        play(SoundEffect.CRASH)
+        if (!isMuted) {
+            try {
+                PlatformAudio.duckMusic(600L)
+            } catch (_: Throwable) {}
+        }
+    }
 }
 
 @Composable
