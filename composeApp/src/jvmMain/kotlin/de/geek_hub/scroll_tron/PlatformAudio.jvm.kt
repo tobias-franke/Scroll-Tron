@@ -32,154 +32,203 @@ private fun sawtoothWave(phase: Double): Double {
     return 2.0 * normP - 1.0
 }
 
-private fun squareWave(phase: Double): Double {
-    return if (sin(phase) >= 0.0) 1.0 else -1.0
-}
+private class ChamberlinFilter(private val sampleRate: Float) {
+    var low = 0.0
+    var band = 0.0
 
-internal fun generateSteerSound(sampleRate: Float = 22050f): ByteArray {
-    val durationSec = 0.035f
-    val numSamples = (sampleRate * durationSec).toInt()
-    val samples = FloatArray(numSamples)
-    var phase = 0.0
-    val fStart = 580.0
-    val fEnd = 320.0
-
-    for (i in 0 until numSamples) {
-        val t = i.toDouble() / numSamples
-        val freq = fStart + (fEnd - fStart) * t
-        phase += 2.0 * PI * freq / sampleRate
-        val wave = triangleWave(phase)
-        val envelope = (1.0 - t) * (1.0 - t)
-        val attack = (i.toDouble() / (sampleRate * 0.003)).coerceAtMost(1.0)
-        samples[i] = (wave * envelope * attack * 0.25).toFloat()
+    fun lp(input: Double, cutoff: Double, q: Double): Double {
+        val f = (2.0 * sin(PI * (cutoff.coerceIn(20.0, sampleRate * 0.4) / sampleRate))).coerceIn(0.005, 0.95)
+        val damp = (1.0 / q.coerceAtLeast(0.5)).coerceIn(0.05, 1.8)
+        val high = input - low - damp * band
+        band += f * high
+        low += f * band
+        return low
     }
-    return encodePcm16(samples)
+
+    fun bp(input: Double, cutoff: Double, q: Double): Double {
+        val f = (2.0 * sin(PI * (cutoff.coerceIn(20.0, sampleRate * 0.4) / sampleRate))).coerceIn(0.005, 0.95)
+        val damp = (1.0 / q.coerceAtLeast(0.5)).coerceIn(0.05, 1.8)
+        val high = input - low - damp * band
+        band += f * high
+        low += f * band
+        return band
+    }
 }
 
-internal fun generateClickSound(sampleRate: Float = 22050f): ByteArray {
+// 1. STEER: Lightcycle Grid Plasma Skid / Laser Whip
+internal fun generateSteerSound(sampleRate: Float = 22050f): ByteArray {
     val durationSec = 0.04f
     val numSamples = (sampleRate * durationSec).toInt()
     val samples = FloatArray(numSamples)
+    val filter = ChamberlinFilter(sampleRate)
     var phase = 0.0
-    val fStart = 880.0
-    val fEnd = 440.0
 
     for (i in 0 until numSamples) {
         val t = i.toDouble() / numSamples
-        val freq = fStart + (fEnd - fStart) * t
-        phase += 2.0 * PI * freq / sampleRate
-        val wave = sin(phase)
-        val envelope = exp(-4.0 * t)
+        val oscFreq = 550.0 + (200.0 - 550.0) * t
+        phase += 2.0 * PI * oscFreq / sampleRate
+        val rawOsc = sawtoothWave(phase) * 0.85 + Random.nextDouble(-0.15, 0.15)
+        val cutoff = 2400.0 + (450.0 - 2400.0) * t
+        val filtered = filter.bp(rawOsc, cutoff, 3.0)
+        val env = exp(-6.0 * t)
         val attack = (i.toDouble() / (sampleRate * 0.002)).coerceAtMost(1.0)
-        samples[i] = (wave * envelope * attack * 0.35).toFloat()
+        samples[i] = (filtered * env * attack * 0.35).toFloat()
     }
     return encodePcm16(samples)
 }
 
+// 2. CRASH: Tron De-Rez Disintegration (Sub Boom + Glassy Crystalline Shatter + Laser Zap)
 internal fun generateCrashSound(sampleRate: Float = 22050f): ByteArray {
-    val durationSec = 0.4f
+    val durationSec = 0.45f
     val numSamples = (sampleRate * durationSec).toInt()
     val samples = FloatArray(numSamples)
+    val shatterFilter = ChamberlinFilter(sampleRate)
 
-    var punchPhase = 0.0
-    val punchStartFreq = 160.0
-    val punchEndFreq = 30.0
-
-    var filterState = 0.0
+    var subPhase = 0.0
+    var laserPhase = 0.0
 
     for (i in 0 until numSamples) {
         val t = i.toDouble() / numSamples
 
-        // 1. Low frequency punch dive
-        val punchFreq = punchStartFreq + (punchEndFreq - punchStartFreq) * t
-        punchPhase += 2.0 * PI * punchFreq / sampleRate
-        val punchWave = sawtoothWave(punchPhase)
-        val punchEnv = exp(-5.0 * t)
+        // Sub impact boom
+        val subFreq = 90.0 + (25.0 - 90.0) * t
+        subPhase += 2.0 * PI * subFreq / sampleRate
+        val subBoom = sin(subPhase) * exp(-4.5 * t) * 0.4
 
-        // 2. Filtered noise burst
+        // De-rez crystalline noise shatter
         val rawNoise = Random.nextDouble(-1.0, 1.0)
-        val cutoff = 2500.0 * (1.0 - t) + 80.0
-        val alpha = (2.0 * PI * cutoff / sampleRate).coerceIn(0.01, 0.9)
-        filterState += alpha * (rawNoise - filterState)
-        val noiseEnv = exp(-4.0 * t)
+        val shatterCutoff = 4200.0 + (280.0 - 4200.0) * t
+        val shatter = shatterFilter.bp(rawNoise, shatterCutoff, 4.0) * exp(-3.5 * t) * 0.45
 
-        val mixed = punchWave * punchEnv * 0.4 + filterState * noiseEnv * 0.45
+        // Laser disintegration zap
+        val laserFreq = 1400.0 * exp(-8.0 * t) + 50.0
+        laserPhase += 2.0 * PI * laserFreq / sampleRate
+        val laserZap = sawtoothWave(laserPhase) * exp(-6.0 * t) * 0.3
+
+        val mixed = subBoom + shatter + laserZap
         samples[i] = mixed.coerceIn(-1.0, 1.0).toFloat()
     }
     return encodePcm16(samples)
 }
 
+// 3. GAME_START: Lightcycle Grid Ignition / Engine Spool (Chorused Reese Engine + Rising Resonant Filter)
 internal fun generateStartSound(sampleRate: Float = 22050f): ByteArray {
-    val notes = doubleArrayOf(440.0, 554.37, 659.25, 880.0)
-    val noteDurSec = 0.08f
-    val totalSec = noteDurSec * notes.size + 0.05f
-    val numSamples = (sampleRate * totalSec).toInt()
-    val samples = FloatArray(numSamples)
-
-    for (n in notes.indices) {
-        val startSample = (n * noteDurSec * sampleRate).toInt()
-        val noteSamples = (noteDurSec * sampleRate).toInt()
-        val freq = notes[n]
-        var phase = 0.0
-
-        for (i in 0 until (noteSamples + (sampleRate * 0.04f).toInt())) {
-            val idx = startSample + i
-            if (idx >= numSamples) break
-            phase += 2.0 * PI * freq / sampleRate
-            val tNote = i.toDouble() / noteSamples
-            val wave = 0.7 * squareWave(phase) + 0.3 * triangleWave(phase)
-            val envelope = exp(-3.5 * tNote)
-            val attack = (i.toDouble() / (sampleRate * 0.003)).coerceAtMost(1.0)
-            samples[idx] = (samples[idx] + (wave * envelope * attack * 0.25).toFloat()).coerceIn(-1f, 1f)
-        }
-    }
-    return encodePcm16(samples)
-}
-
-internal fun generateGameOverSound(sampleRate: Float = 22050f): ByteArray {
-    val durationSec = 0.5f
+    val durationSec = 0.45f
     val numSamples = (sampleRate * durationSec).toInt()
     val samples = FloatArray(numSamples)
-    var phase = 0.0
-    val fStart = 320.0
-    val fEnd = 65.0
+    val filter = ChamberlinFilter(sampleRate)
+
+    var oscPhase1 = 0.0
+    var oscPhase2 = 0.0
+    var pingPhase = 0.0
 
     for (i in 0 until numSamples) {
         val t = i.toDouble() / numSamples
-        val freq = fStart + (fEnd - fStart) * t
-        phase += 2.0 * PI * freq / sampleRate
-        val wave = 0.6 * sawtoothWave(phase) + 0.4 * squareWave(phase)
-        val envelope = exp(-2.5 * t)
-        val attack = (i.toDouble() / (sampleRate * 0.004)).coerceAtMost(1.0)
-        samples[i] = (wave * envelope * attack * 0.35).toFloat()
+
+        // Detuned engine roar sweeping up
+        val freq1 = 70.0 + (180.0 - 70.0) * t
+        val freq2 = 73.0 + (183.0 - 73.0) * t
+        oscPhase1 += 2.0 * PI * freq1 / sampleRate
+        oscPhase2 += 2.0 * PI * freq2 / sampleRate
+        val rawEngine = 0.5 * sawtoothWave(oscPhase1) + 0.5 * sawtoothWave(oscPhase2)
+
+        // Resonant filter sweep opening wide
+        val cutoff = 120.0 + (2800.0 - 120.0) * t
+        val filteredEngine = filter.lp(rawEngine, cutoff, 3.5)
+
+        // Envelope: smooth surge, then sustain and gentle decay
+        val env = (sin(PI * t.coerceIn(0.0, 1.0) * 0.85)).coerceIn(0.0, 1.0)
+
+        // High grid-lock laser ping at peak engagement (around t = 0.22)
+        var ping = 0.0
+        if (t >= 0.22) {
+            val tPing = t - 0.22
+            pingPhase += 2.0 * PI * 1200.0 / sampleRate
+            ping = sin(pingPhase) * exp(-12.0 * tPing) * 0.15
+        }
+
+        val mixed = filteredEngine * env * 0.4 + ping
+        samples[i] = mixed.coerceIn(-1.0, 1.0).toFloat()
     }
     return encodePcm16(samples)
 }
 
-internal fun generateVictorySound(sampleRate: Float = 22050f): ByteArray {
-    val notes = doubleArrayOf(523.25, 659.25, 783.99, 1046.50)
-    val noteDurSec = 0.11f
-    val totalSec = noteDurSec * (notes.size - 1) + 0.35f
-    val numSamples = (sampleRate * totalSec).toInt()
+// 4. GAME_OVER: Grid Blackout / Void Powerdown (Dark Detuned Saws Choked by Resonant Lowpass)
+internal fun generateGameOverSound(sampleRate: Float = 22050f): ByteArray {
+    val durationSec = 0.65f
+    val numSamples = (sampleRate * durationSec).toInt()
     val samples = FloatArray(numSamples)
+    val filter = ChamberlinFilter(sampleRate)
 
-    for (n in notes.indices) {
-        val startSample = (n * noteDurSec * sampleRate).toInt()
-        val dur = if (n == notes.size - 1) 0.3f else noteDurSec
-        val noteSamples = (dur * sampleRate).toInt()
-        val freq = notes[n]
-        var phase = 0.0
+    var phase1 = 0.0
+    var phase2 = 0.0
 
-        for (i in 0 until noteSamples) {
-            val idx = startSample + i
-            if (idx >= numSamples) break
-            phase += 2.0 * PI * freq / sampleRate
-            val tNote = i.toDouble() / noteSamples
-            val wave = 0.7 * triangleWave(phase) + 0.3 * sin(phase)
-            val envelope = exp(-2.5 * tNote)
-            val attack = (i.toDouble() / (sampleRate * 0.003)).coerceAtMost(1.0)
-            samples[idx] = (samples[idx] + (wave * envelope * attack * 0.3).toFloat()).coerceIn(-1f, 1f)
+    for (i in 0 until numSamples) {
+        val t = i.toDouble() / numSamples
+        phase1 += 2.0 * PI * 110.0 / sampleRate
+        phase2 += 2.0 * PI * 108.0 / sampleRate
+        val rawDrone = 0.5 * sawtoothWave(phase1) + 0.5 * sawtoothWave(phase2)
+
+        // Resonant filter dropping deep into sub-void
+        val cutoff = 2200.0 * exp(-5.0 * t) + 35.0
+        val filtered = filter.lp(rawDrone, cutoff, 5.0)
+        val env = exp(-3.0 * t)
+        val attack = (i.toDouble() / (sampleRate * 0.005)).coerceAtMost(1.0)
+
+        samples[i] = (filtered * env * attack * 0.45).coerceIn(-1.0, 1.0).toFloat()
+    }
+    return encodePcm16(samples)
+}
+
+// 5. VICTORY: Tron Legacy Cyber Synthwave Polyphonic Chord Swell (D minor triad + 7th pad)
+internal fun generateVictorySound(sampleRate: Float = 22050f): ByteArray {
+    val durationSec = 0.75f
+    val numSamples = (sampleRate * durationSec).toInt()
+    val samples = FloatArray(numSamples)
+    val filter = ChamberlinFilter(sampleRate)
+
+    // D minor poly-chord: D3, A3, D4, F4
+    val freqs = doubleArrayOf(146.83, 220.00, 293.66, 349.23)
+    val phases = DoubleArray(freqs.size)
+
+    for (i in 0 until numSamples) {
+        val t = i.toDouble() / numSamples
+
+        // Sum 4 chord voices simultaneously
+        var chord = 0.0
+        for (v in freqs.indices) {
+            phases[v] += 2.0 * PI * freqs[v] / sampleRate
+            chord += 0.6 * sawtoothWave(phases[v]) + 0.4 * triangleWave(phases[v])
         }
+        chord /= freqs.size
+
+        // Resonant filter swell: opens up then gently settles
+        val filterEnv = if (t < 0.2) t / 0.2 else exp(-2.0 * (t - 0.2))
+        val cutoff = 500.0 + 2700.0 * filterEnv
+        val filtered = filter.lp(chord, cutoff, 2.5)
+
+        // Master amplitude envelope: warm swell and shimmering release
+        val ampEnv = if (t < 0.1) t / 0.1 else exp(-1.8 * (t - 0.1))
+        samples[i] = (filtered * ampEnv * 0.4).coerceIn(-1.0, 1.0).toFloat()
+    }
+    return encodePcm16(samples)
+}
+
+// 6. UI_CLICK: Holographic Touchscreen Tap (Clean High-Tech Micro-Transient)
+internal fun generateClickSound(sampleRate: Float = 22050f): ByteArray {
+    val durationSec = 0.02f
+    val numSamples = (sampleRate * durationSec).toInt()
+    val samples = FloatArray(numSamples)
+    var phase = 0.0
+
+    for (i in 0 until numSamples) {
+        val t = i.toDouble() / numSamples
+        val freq = 1800.0 + (900.0 - 1800.0) * t
+        phase += 2.0 * PI * freq / sampleRate
+        val wave = sin(phase)
+        val envelope = exp(-8.0 * t)
+        val attack = (i.toDouble() / (sampleRate * 0.001)).coerceAtMost(1.0)
+        samples[i] = (wave * envelope * attack * 0.3).toFloat()
     }
     return encodePcm16(samples)
 }
