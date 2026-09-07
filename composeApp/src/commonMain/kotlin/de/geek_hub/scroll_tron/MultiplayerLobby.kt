@@ -1,7 +1,6 @@
 package de.geek_hub.scroll_tron
 
 import androidx.compose.foundation.Canvas
-import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -10,16 +9,13 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
-import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.SolidColor
-import androidx.compose.ui.input.pointer.PointerEventType
 import androidx.compose.ui.input.pointer.PointerIcon
-import androidx.compose.ui.input.pointer.onPointerEvent
 import androidx.compose.ui.input.pointer.pointerHoverIcon
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
@@ -41,10 +37,12 @@ import kotlin.math.sin
 // Lobby palette
 // ---------------------------------------------------------------------------
 
-private val NEON_CYAN   = CyberColors.NEON_CYAN
-private val NEON_PINK   = CyberColors.NEON_PINK
-private val NEON_LIME   = CyberColors.NEON_LIME
-private val DIM_TEXT    = CyberColors.DIM_TEXT
+private val NEON_CYAN   = Color(0xFF00FFFF)
+private val NEON_PINK   = Color(0xFFFF00FF)
+private val NEON_LIME   = Color(0xFF39FF14)
+private val GRID_COLOR  = Color(0xFF0D2A0D)
+private val BG_COLOR    = Color(0xFF020C02)
+private val DIM_TEXT    = Color(0xFFCCCCCC)
 
 // ---------------------------------------------------------------------------
 // Multiplayer Lobby
@@ -139,10 +137,20 @@ fun MultiplayerLobby(
         modifier = Modifier.fillMaxSize(),
         contentAlignment = Alignment.Center,
     ) {
-        // Cyber Grid & Corner Brackets Background
+        // Grid background
         Canvas(modifier = Modifier.fillMaxSize()) {
-            drawCyberGrid(size.width, size.height, step = 60f)
-            drawCornerBrackets(size.width, size.height, CyberColors.NEON_PINK.copy(alpha = 0.5f), bracketLength = 36f, bracketStroke = 2.5f, margin = 12f)
+            drawRect(BG_COLOR)
+            val step = 60f
+            var x = 0f
+            while (x <= size.width) {
+                drawLine(GRID_COLOR, Offset(x, 0f), Offset(x, size.height), strokeWidth = 1f)
+                x += step
+            }
+            var y = 0f
+            while (y <= size.height) {
+                drawLine(GRID_COLOR, Offset(0f, y), Offset(size.width, y), strokeWidth = 1f)
+                y += step
+            }
         }
 
         Column(
@@ -154,31 +162,14 @@ fun MultiplayerLobby(
             Text(
                 text = "MULTIPLAYER",
                 style = TextStyle(
-                    fontSize = 38.sp,
+                    fontSize = 36.sp,
                     fontWeight = FontWeight.Bold,
                     fontFamily = gameFont,
                     color = NEON_PINK,
-                    letterSpacing = 4.sp,
-                    shadow = androidx.compose.ui.graphics.Shadow(
-                        color = NEON_PINK.copy(alpha = pulse * 0.6f),
-                        offset = Offset.Zero,
-                        blurRadius = 24f,
-                    ),
-                ),
-            )
-            Spacer(modifier = Modifier.height(6.dp))
-            Text(
-                text = "ARENA LOBBY & MATCHMAKING",
-                style = TextStyle(
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.Bold,
-                    fontFamily = gameFont,
-                    color = DIM_TEXT,
-                    letterSpacing = 3.sp,
                 ),
             )
 
-            Spacer(modifier = Modifier.height(40.dp))
+            Spacer(modifier = Modifier.height(48.dp))
 
             Box(
                 modifier = Modifier.heightIn(min = 390.dp),
@@ -268,8 +259,7 @@ fun MultiplayerLobby(
                             // Big room code display
                             Box(
                                 modifier = Modifier
-                                    .background(CyberColors.PANEL_BG, RoundedCornerShape(10.dp))
-                                    .border(2.dp, codeBorderColor, RoundedCornerShape(10.dp))
+                                    .border(2.dp, codeBorderColor, RoundedCornerShape(8.dp))
                                     .clickable {
                                         if (connector.roomCode.isNotEmpty()) {
                                             copyToClipboard(connector.roomCode)
@@ -294,10 +284,9 @@ fun MultiplayerLobby(
                             Text(
                                 text = if (copiedCode) "COPIED TO CLIPBOARD!" else "CLICK CODE TO COPY",
                                 fontFamily = gameFont,
-                                fontSize = 15.sp,
+                                fontSize = 16.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = feedbackColor,
-                                letterSpacing = 1.sp,
                             )
 
                             Spacer(modifier = Modifier.height(24.dp))
@@ -321,13 +310,12 @@ fun MultiplayerLobby(
                                 fontSize = 18.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = NEON_CYAN,
-                                letterSpacing = 1.sp,
                             )
 
                             Spacer(modifier = Modifier.height(14.dp))
 
-                            // Player slots (Pods)
-                            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                            // Player slots
+                            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                                 for (i in 0 until 4) {
                                     val isHuman = i < connector.connectedPlayers
                                     val isBot = !isHuman && i < totalPlayers
@@ -340,17 +328,9 @@ fun MultiplayerLobby(
 
                                     Box(
                                         modifier = Modifier
-                                            .width(72.dp)
-                                            .height(82.dp)
-                                            .background(
-                                                if (isHuman || isBot) color.copy(alpha = 0.08f) else CyberColors.PANEL_BG,
-                                                RoundedCornerShape(8.dp)
-                                            )
-                                            .border(
-                                                width = if (isHuman || isBot) 1.8.dp else 1.dp,
-                                                color = if (isHuman || isBot) color.copy(alpha = 0.85f) else Color(0x3388AA99),
-                                                shape = RoundedCornerShape(8.dp)
-                                            )
+                                            .width(68.dp)
+                                            .height(72.dp)
+                                            .border(1.5.dp, color, RoundedCornerShape(6.dp))
                                             .clickable(enabled = slotClickable) {
                                                 if (isBot) {
                                                     aiCount = maxOf(0, aiCount - 1)
@@ -371,8 +351,7 @@ fun MultiplayerLobby(
                                             }
                                             val bottomText = when {
                                                 i == 0 -> "YOU"
-                                                isBot -> "BOT"
-                                                isEmpty -> "ADD"
+                                                isBot || isEmpty -> "BOT"
                                                 else -> "GUEST"
                                             }
 
@@ -383,29 +362,24 @@ fun MultiplayerLobby(
                                                 Text(
                                                     text = topText,
                                                     fontFamily = gameFont,
-                                                    fontSize = if (isEmpty) 22.sp else 18.sp,
+                                                    fontSize = 18.sp,
                                                     fontWeight = FontWeight.Bold,
                                                     color = color,
                                                 )
                                             }
 
-                                            Spacer(modifier = Modifier.height(3.dp))
+                                            Spacer(modifier = Modifier.height(2.dp))
 
                                             Box(
-                                                modifier = Modifier
-                                                    .background(
-                                                        if (isHuman || isBot) color.copy(alpha = 0.15f) else Color.Transparent,
-                                                        RoundedCornerShape(4.dp)
-                                                    )
-                                                    .padding(horizontal = 6.dp, vertical = 2.dp),
+                                                modifier = Modifier.height(16.dp),
                                                 contentAlignment = Alignment.Center,
                                             ) {
                                                 Text(
                                                     text = bottomText,
                                                     fontFamily = gameFont,
-                                                    fontSize = 11.sp,
+                                                    fontSize = 12.sp,
                                                     fontWeight = FontWeight.Bold,
-                                                    color = color,
+                                                    color = if (i == 0) color.copy(alpha = 0.85f) else color,
                                                     letterSpacing = 1.sp,
                                                 )
                                             }
@@ -456,8 +430,7 @@ fun MultiplayerLobby(
                             // Code input field
                             Box(
                                 modifier = Modifier
-                                    .background(CyberColors.PANEL_BG, RoundedCornerShape(10.dp))
-                                    .border(2.dp, NEON_PINK.copy(alpha = 0.6f), RoundedCornerShape(10.dp))
+                                    .border(2.dp, NEON_PINK.copy(alpha = 0.5f), RoundedCornerShape(8.dp))
                                     .clickable { focusRequester.requestFocus() }
                                     .pointerHoverIcon(PointerIcon.Text)
                                     .padding(horizontal = 32.dp, vertical = 16.dp),
@@ -635,7 +608,6 @@ private val PLAYER_COLORS = listOf(
 
 private enum class LobbyMode { Host, Join }
 
-@OptIn(ExperimentalComposeUiApi::class)
 @Composable
 private fun LobbyButton(
     text: String,
@@ -644,31 +616,10 @@ private fun LobbyButton(
     modifier: Modifier = Modifier.width(280.dp),
     onClick: () -> Unit,
 ) {
-    var isHovered by remember { mutableStateOf(false) }
-
-    val bgColor = if (isHovered) {
-        color.copy(alpha = 0.16f)
-    } else {
-        CyberColors.PANEL_BG
-    }
-
-    val borderColor = if (isHovered) {
-        color
-    } else {
-        color.copy(alpha = 0.65f)
-    }
-
     Box(
         modifier = modifier
             .height(52.dp)
-            .background(bgColor, RoundedCornerShape(8.dp))
-            .border(
-                width = if (isHovered) 2.dp else 1.2.dp,
-                color = borderColor,
-                shape = RoundedCornerShape(8.dp),
-            )
-            .onPointerEvent(PointerEventType.Enter) { isHovered = true }
-            .onPointerEvent(PointerEventType.Exit) { isHovered = false }
+            .border(1.dp, color.copy(alpha = 0.7f), RoundedCornerShape(4.dp))
             .clickable(onClick = onClick)
             .pointerHoverIcon(PointerIcon.Hand)
             .padding(horizontal = 24.dp),
@@ -679,7 +630,7 @@ private fun LobbyButton(
             fontFamily = gameFont,
             fontWeight = FontWeight.Bold,
             fontSize = 18.sp,
-            color = if (isHovered) Color.White else color,
+            color = color,
         )
     }
 }
