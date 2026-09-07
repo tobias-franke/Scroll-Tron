@@ -55,7 +55,7 @@ fun SoundToggleButton(
 ) {
     val isMuted = SoundManager.isMuted
     val buttonColor = if (isMuted) Color(0xFF666666) else Color(0xFF00FFFF)
-    val label = if (isMuted) "🔇 SOUND: OFF" else "🔊 SOUND: ON"
+    val label = if (isMuted) "SOUND: OFF" else "SOUND: ON"
 
     Box(
         modifier = modifier
