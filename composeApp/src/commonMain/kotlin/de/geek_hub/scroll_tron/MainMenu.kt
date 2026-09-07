@@ -89,15 +89,6 @@ fun MainMenu(
             },
         contentAlignment = Alignment.Center,
     ) {
-        // Sound toggle button in top-right corner
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(24.dp),
-            contentAlignment = Alignment.TopEnd,
-        ) {
-            SoundToggleButton(gameFont = gameFont)
-        }
         // Animated grid background
         Canvas(modifier = Modifier.fillMaxSize()) {
             drawRect(BG_COLOR)
@@ -212,6 +203,16 @@ fun MainMenu(
                     }
                 }
             }
+        }
+
+        // Sound toggle button in top-right corner (rendered on top of Canvas & Menu)
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(24.dp),
+            contentAlignment = Alignment.TopEnd,
+        ) {
+            SoundToggleButton(gameFont = gameFont)
         }
     }
 

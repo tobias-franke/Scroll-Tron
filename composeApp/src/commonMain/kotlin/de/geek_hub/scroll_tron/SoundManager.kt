@@ -1,5 +1,6 @@
 package de.geek_hub.scroll_tron
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
@@ -58,6 +59,10 @@ fun SoundToggleButton(
 
     Box(
         modifier = modifier
+            .background(
+                color = Color(0xEE0A0E14),
+                shape = RoundedCornerShape((4 / scaleFactor).dp),
+            )
             .border(
                 width = (1 / scaleFactor).dp,
                 color = buttonColor.copy(alpha = 0.7f),
