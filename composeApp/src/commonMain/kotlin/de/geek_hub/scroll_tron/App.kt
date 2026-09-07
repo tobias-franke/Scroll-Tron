@@ -19,6 +19,7 @@ import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
@@ -44,6 +45,7 @@ import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import org.jetbrains.compose.resources.Font
 import scrolltron.composeapp.generated.resources.Res
@@ -154,47 +156,6 @@ private fun DrawScope.drawRickRollOverlay(
 // Collision helpers (parametric segment-segment intersection)
 // ---------------------------------------------------------------------------
 
-/** Cross product of 2-D vectors (u × v). */
-private fun cross(ux: Float, uy: Float, vx: Float, vy: Float) = ux * vy - uy * vx
-
-/**
- * Returns true if segment [p1→p2] intersects [q1→q2].
- * Uses the standard parametric formula:
- *   t = (q1 - p1) × s / (r × s)
- *   u = (q1 - p1) × r / (r × s)
- *   intersection iff 0 ≤ t ≤ 1 and 0 ≤ u ≤ 1
- */
-private fun segmentsIntersect(
-    p1: Point, p2: Point,
-    q1: Point, q2: Point,
-): Boolean {
-    val rx = p2.x - p1.x;  val ry = p2.y - p1.y
-    val sx = q2.x - q1.x;  val sy = q2.y - q1.y
-    val denom = cross(rx, ry, sx, sy)
-    val dx = q1.x - p1.x;  val dy = q1.y - p1.y
-    
-    if (abs(denom) < 1e-6f) {
-        if (abs(cross(dx, dy, rx, ry)) < 1e-6f) {
-            val pMinX = kotlin.math.min(p1.x, p2.x)
-            val pMaxX = kotlin.math.max(p1.x, p2.x)
-            val qMinX = kotlin.math.min(q1.x, q2.x)
-            val qMaxX = kotlin.math.max(q1.x, q2.x)
-            
-            val pMinY = kotlin.math.min(p1.y, p2.y)
-            val pMaxY = kotlin.math.max(p1.y, p2.y)
-            val qMinY = kotlin.math.min(q1.y, q2.y)
-            val qMaxY = kotlin.math.max(q1.y, q2.y)
-            
-            return kotlin.math.max(pMinX, qMinX) <= kotlin.math.min(pMaxX, qMaxX) + 1e-4f &&
-                   kotlin.math.max(pMinY, qMinY) <= kotlin.math.min(pMaxY, qMaxY) + 1e-4f
-        }
-        return false
-    }
-    
-    val t = cross(dx, dy, sx, sy) / denom
-    val u = cross(dx, dy, rx, ry) / denom
-    return t in -1e-4f..1.0001f && u in -1e-4f..1.0001f
-}
 
 // ---------------------------------------------------------------------------
 // Initial state factory
@@ -233,31 +194,60 @@ private fun stepGame(state: GameState, canvasWidth: Float, canvasHeight: Float):
     val oldPos = state.position
     val newPos = Point(oldPos.x + dx, oldPos.y + dy)
 
-    // 3. Build new segment
-    val newSegment = LineSegment(oldPos, newPos)
-    state.trail.add(newSegment)
+    var minT = 1.0f
+    var collision = false
 
-    // 4. Wall collision
-    val wallHit = newPos.x < 0 || newPos.x > canvasWidth ||
-                  newPos.y < 0 || newPos.y > canvasHeight
+    // Wall collision
+    if (dx < 0f && newPos.x < 0f) {
+        val t = (-oldPos.x / dx).coerceIn(0f, 1f)
+        if (t < minT) { minT = t; collision = true }
+    } else if (dx > 0f && newPos.x > canvasWidth) {
+        val t = ((canvasWidth - oldPos.x) / dx).coerceIn(0f, 1f)
+        if (t < minT) { minT = t; collision = true }
+    }
+    if (dy < 0f && newPos.y < 0f) {
+        val t = (-oldPos.y / dy).coerceIn(0f, 1f)
+        if (t < minT) { minT = t; collision = true }
+    } else if (dy > 0f && newPos.y > canvasHeight) {
+        val t = ((canvasHeight - oldPos.y) / dy).coerceIn(0f, 1f)
+        if (t < minT) { minT = t; collision = true }
+    }
 
-    // 5. Self-collision
-    var selfHit = false
+    // Self-collision
     val endIdx = state.trail.size - SKIP_SEGMENTS - 1
     for (i in 0..endIdx) {
         val seg = state.trail[i]
-        if (segmentsIntersect(newSegment.start, newSegment.end, seg.start, seg.end)) {
-            selfHit = true
-            break
+        val t = intersectionT(oldPos, newPos, seg.start, seg.end)
+        if (t != null && t < minT) {
+            minT = t
+            collision = true
         }
     }
 
+    val finalPos = if (collision) {
+        val impactX = oldPos.x + minT * dx
+        val impactY = oldPos.y + minT * dy
+        val distToImpact = minT * SPEED
+        // Back off by up to 1.25f (half stroke width) so the round cap reaches the obstacle centerline and never penetrates beyond
+        val backOff = minOf(1.25f, distToImpact * 0.8f)
+        val backOffRatio = if (SPEED > 0f) backOff / SPEED else 0f
+        Point(
+            impactX - backOffRatio * dx,
+            impactY - backOffRatio * dy,
+        )
+    } else {
+        newPos
+    }
+
+    val finalSegment = LineSegment(oldPos, finalPos)
+    state.trail.add(finalSegment)
+
     return state.copy(
-        position        = newPos,
+        position        = finalPos,
         angle           = newAngle,
         angularVelocity = newAngVel,
         // trail reference stays the same
-        isDead          = wallHit || selfHit,
+        isDead          = collision,
     )
 }
 
@@ -349,51 +339,89 @@ private fun DrawScope.drawScoreHud(
     gameFont: FontFamily,
     scaleFactor: Float,
 ) {
-    val scoreText = "SCORE  " + score.toString().padStart(6, '0')
-    val hiText    = "BEST   " + highScore.toString().padStart(6, '0')
+    val scoreValText = score.toString().padStart(5, '0')
+    val hiValText    = highScore.toString().padStart(5, '0')
 
-    val scoreMeasured = textMeasurer.measure(
-        scoreText,
-        TextStyle(
-            fontSize   = (14 / scaleFactor).sp,
-            fontWeight = FontWeight.Bold,
-            fontFamily = FontFamily.Monospace,
-            color      = trailColor,
-        ),
+    val labelStyle = TextStyle(
+        fontSize   = (10 / scaleFactor).sp,
+        fontWeight = FontWeight.Bold,
+        fontFamily = gameFont,
+        color      = CyberColors.DIM_TEXT,
     )
-    val hiMeasured = textMeasurer.measure(
-        hiText,
-        TextStyle(
-            fontSize   = (14 / scaleFactor).sp,
-            fontFamily = FontFamily.Monospace,
-            color      = Color(0xFF666666),
-        ),
+    val scoreValStyle = TextStyle(
+        fontSize   = (16 / scaleFactor).sp,
+        fontWeight = FontWeight.Bold,
+        fontFamily = gameFont,
+        color      = trailColor,
     )
-
-    val padding   = 16f / scaleFactor
-    val topInset  = 48f / scaleFactor
-    val scoreW    = scoreMeasured.multiParagraph.width
-    val scoreH    = scoreMeasured.multiParagraph.height
-    val hiW       = hiMeasured.multiParagraph.width
-    val lineH     = scoreH + 4f
-
-    // Semi-transparent pill background
-    val boxW = maxOf(scoreW, hiW) + padding * 2
-    val boxH = lineH * 2 + padding
-    drawRect(
-        color   = Color(0xCC000000),
-        topLeft = Offset(size.width - boxW - padding, padding + topInset),
-        size    = Size(boxW, boxH),
+    val hiValStyle = TextStyle(
+        fontSize   = (16 / scaleFactor).sp,
+        fontWeight = FontWeight.Normal,
+        fontFamily = gameFont,
+        color      = if (score > 0 && score >= highScore) CyberColors.NEON_LIME else Color(0xFFAAAAAA),
     )
 
-    drawText(
-        scoreMeasured,
-        topLeft = Offset(size.width - scoreW - padding * 2, padding + topInset + 6f),
+    val scoreLabelM = textMeasurer.measure("SCORE", labelStyle)
+    val scoreValM   = textMeasurer.measure(scoreValText, scoreValStyle)
+    val hiLabelM    = textMeasurer.measure("RECORD", labelStyle)
+    val hiValM      = textMeasurer.measure(hiValText, hiValStyle)
+
+    // Fixed column width for both score boxes so they never resize or jitter
+    val colWidth   = 80f / scaleFactor
+    val padH       = 14f / scaleFactor
+    val padV       = 10f / scaleFactor
+    val topInset   = 48f / scaleFactor
+    val colGap     = 16f / scaleFactor
+
+    val boxW       = padH * 2 + colWidth * 2 + colGap + 4f / scaleFactor
+    val boxH       = padV * 2 + maxOf(scoreLabelM.size.height + scoreValM.size.height, hiLabelM.size.height + hiValM.size.height) + 4f
+    val boxX       = size.width - boxW - padH
+    val boxY       = padV + topInset
+
+    // Floating transparent cyber glass panel (transparent so trail is clearly visible behind it)
+    drawRoundRect(
+        color = CyberColors.PANEL_BG.copy(alpha = 0.15f),
+        topLeft = Offset(boxX, boxY),
+        size = Size(boxW, boxH),
+        cornerRadius = CornerRadius(8f / scaleFactor, 8f / scaleFactor),
     )
-    drawText(
-        hiMeasured,
-        topLeft = Offset(size.width - hiW - padding * 2, padding + topInset + 6f + lineH),
+    drawRoundRect(
+        color = trailColor.copy(alpha = 0.35f),
+        topLeft = Offset(boxX, boxY),
+        size = Size(boxW, boxH),
+        cornerRadius = CornerRadius(8f / scaleFactor, 8f / scaleFactor),
+        style = Stroke(width = 1.2f / scaleFactor),
     )
+    // Left glowing accent bar
+    drawRoundRect(
+        color = trailColor.copy(alpha = 0.5f),
+        topLeft = Offset(boxX, boxY),
+        size = Size(3.5f / scaleFactor, boxH),
+        cornerRadius = CornerRadius(2f / scaleFactor, 2f / scaleFactor),
+    )
+
+    // Score column (fixed width, centered)
+    val c1X = boxX + padH + 4f / scaleFactor
+    val scoreLabelX = c1X + (colWidth - scoreLabelM.size.width) / 2f
+    val scoreValX   = c1X + (colWidth - scoreValM.size.width) / 2f
+    drawText(scoreLabelM, topLeft = Offset(scoreLabelX, boxY + padV))
+    drawText(scoreValM,   topLeft = Offset(scoreValX,   boxY + padV + scoreLabelM.size.height + 2f))
+
+    // Divider
+    val divX = c1X + colWidth + (colGap / 2f)
+    drawLine(
+        color = Color(0x33FFFFFF),
+        start = Offset(divX, boxY + padV + 2f),
+        end = Offset(divX, boxY + boxH - padV - 2f),
+        strokeWidth = 1f,
+    )
+
+    // Record column (fixed width, centered)
+    val c2X = divX + (colGap / 2f)
+    val hiLabelX = c2X + (colWidth - hiLabelM.size.width) / 2f
+    val hiValX   = c2X + (colWidth - hiValM.size.width) / 2f
+    drawText(hiLabelM, topLeft = Offset(hiLabelX, boxY + padV))
+    drawText(hiValM,   topLeft = Offset(hiValX,   boxY + padV + hiLabelM.size.height + 2f))
 }
 
 private fun DrawScope.drawDeadOverlay(
@@ -484,10 +512,26 @@ fun SingleplayerGame(onBack: () -> Unit = {}) {
     var rickLyricRect  by remember { mutableStateOf<Rect?>(null) }
     var isHoveringLyric by remember { mutableStateOf(false) }
     var showHint        by remember { mutableStateOf(true) }
+    val deRezSystem   = remember { DeRezSystem() }
+    var animTick      by remember { mutableStateOf(0L) }
+    var showEndScreen by remember { mutableStateOf(false) }
 
     val doRestart: () -> Unit = {
+        showEndScreen = false
         trailColor = nextTrailColor()
         gameState  = initialState(canvasWidth, canvasHeight)
+        deRezSystem.clear()
+        animTick++
+    }
+
+    LaunchedEffect(gameState.isDead) {
+        if (gameState.isDead) {
+            showEndScreen = false
+            delay(700L)
+            showEndScreen = true
+        } else {
+            showEndScreen = false
+        }
     }
 
     val focusRequester = remember { FocusRequester() }
@@ -515,6 +559,10 @@ fun SingleplayerGame(onBack: () -> Unit = {}) {
                 val elapsed = (nanos - lastFrame) / 1_000_000L  // ms
                 if (elapsed >= 14L) {                             // ~60 fps
                     lastFrame = nanos
+                    if (deRezSystem.hasActive()) {
+                        deRezSystem.update()
+                        animTick++
+                    }
                     if (canvasWidth > 0f && canvasHeight > 0f) {
                         val prev = gameState
                         gameState = stepGame(prev, canvasWidth, canvasHeight)
@@ -523,6 +571,10 @@ fun SingleplayerGame(onBack: () -> Unit = {}) {
                             deathCount++
                             val score = gameState.trail.size
                             if (score > highScore) highScore = score
+                            val crashX = gameState.position.x.coerceIn(0f, canvasWidth)
+                            val crashY = gameState.position.y.coerceIn(0f, canvasHeight)
+                            deRezSystem.triggerExplosion(crashX, crashY, trailColor)
+                            animTick++
                         }
                     }
                 }
@@ -592,6 +644,9 @@ fun SingleplayerGame(onBack: () -> Unit = {}) {
                 }
         ) {
             Canvas(modifier = Modifier.fillMaxSize()) {
+            // Track animTick to drive continuous 60fps redraws during crash animation
+            val _anim = animTick
+
             // Capture canvas size
             if (canvasWidth  != size.width)  canvasWidth  = size.width
             if (canvasHeight != size.height) canvasHeight = size.height
@@ -609,9 +664,6 @@ fun SingleplayerGame(onBack: () -> Unit = {}) {
                 val angleDeg = (gameState.angle * (180.0 / kotlin.math.PI)).toFloat()
                 drawHead(gameState.position, angleDeg, trailColor)
             }
-
-            // Live score HUD
-            drawScoreHud(textMeasurer, gameState.trail.size, highScore, trailColor, gameFont, scaleFactor)
 
             // First-start hint
             if (showHint && !gameState.isDead) {
@@ -665,8 +717,11 @@ fun SingleplayerGame(onBack: () -> Unit = {}) {
                 )
             }
 
-            // Death overlay
-            if (gameState.isDead) {
+            // De-rez explosion particles & shockwaves
+            deRezSystem.draw(this)
+
+            // Death overlay (shown a few moments later after the crash!)
+            if (showEndScreen) {
                 if (deathCount % 5 == 0) {
                     // 🎵 every 5th death: surprise!
                     drawRickRollOverlay(textMeasurer, deathCount, gameState.trail.size, highScore, gameFont, scaleFactor) { rickLyricRect = it }
@@ -675,10 +730,13 @@ fun SingleplayerGame(onBack: () -> Unit = {}) {
                     drawDeadOverlay(textMeasurer, gameState.trail.size, highScore, gameFont, scaleFactor)
                 }
             }
+
+            // Live score HUD (fixed width)
+            drawScoreHud(textMeasurer, gameState.trail.size, highScore, trailColor, gameFont, scaleFactor)
         }
 
-        // Restart button — shown on both death screens, above the LaunchedEffect focus grab
-        if (gameState.isDead) {
+        // Restart button — shown once the end screen appears
+        if (showEndScreen) {
             Box(
                 modifier = Modifier
                     .fillMaxSize()
@@ -734,11 +792,11 @@ fun SingleplayerGame(onBack: () -> Unit = {}) {
     } // Closes inner scaled Box
     } // Closes BoxWithConstraints
 
-    // Grab keyboard focus initially and re-claim it whenever isDead changes.
+    // Grab keyboard focus initially and re-claim it whenever isDead / showEndScreen changes.
     // The restart button (.clickable) steals focus when it appears; this ensures
     // Escape and R always route back to the main Box.
     LaunchedEffect(Unit) { focusRequester.requestFocus() }
-    LaunchedEffect(gameState.isDead) { focusRequester.requestFocus() }
+    LaunchedEffect(showEndScreen) { if (showEndScreen) focusRequester.requestFocus() }
 }
 
 // ---------------------------------------------------------------------------
