@@ -339,7 +339,7 @@ private fun DrawScope.drawScoreHud(
     trailColor: Color,
     gameFont: FontFamily,
     scaleFactor: Float,
-) {
+): Float {
     val scoreValText = score.toString().padStart(5, '0')
     val hiValText    = highScore.toString().padStart(5, '0')
 
@@ -876,7 +876,21 @@ fun SingleplayerGame(onBack: () -> Unit = {}) {
             }
 
             // Live score HUD (fixed width)
-            drawScoreHud(textMeasurer, gameState.trail.size, highScore, trailColor, gameFont, scaleFactor)
+            val hudBottomY = drawScoreHud(textMeasurer, gameState.trail.size, highScore, trailColor, gameFont, scaleFactor)
+
+            if (showDebugOverlay) {
+                drawDebugOverlay(
+                    textMeasurer = textMeasurer,
+                    fps = fps,
+                    tps = tps,
+                    speed = SPEED,
+                    angularVelocity = gameState.angularVelocity,
+                    trailSize = gameState.trail.size,
+                    gameFont = gameFont,
+                    scaleFactor = scaleFactor,
+                    topY = hudBottomY + (8f / scaleFactor),
+                )
+            }
         }
 
         // Restart button — shown once the end screen appears
