@@ -34,6 +34,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import org.jetbrains.compose.resources.Font
 import scrolltron.composeapp.generated.resources.Res
@@ -506,10 +507,45 @@ fun MultiplayerGame(
 
     val spatialGrid = remember { SpatialGrid() }
     val trailCaches = remember { mutableMapOf<Int, CachedTrailPath>() }
+    val deRezSystem = remember { DeRezSystem() }
+    var animTick by remember { mutableStateOf(0L) }
+    var prevDeadPlayers by remember { mutableStateOf(setOf<Int>()) }
+    var showGameOverScreen by remember { mutableStateOf(false) }
 
     val resetRoundResources = {
         spatialGrid.clear()
         trailCaches.clear()
+        deRezSystem.clear()
+        prevDeadPlayers = emptySet()
+        showGameOverScreen = false
+        animTick++
+    }
+
+    // Crash detection for all players / bots
+    LaunchedEffect(mpState.players) {
+        mpState.players.forEachIndexed { i, player ->
+            if (player.isDead && !prevDeadPlayers.contains(i)) {
+                prevDeadPlayers = prevDeadPlayers + i
+                val color = PLAYER_COLORS[i % PLAYER_COLORS.size]
+                val crashX = player.position.x.coerceIn(0f, GAME_WIDTH)
+                val crashY = player.position.y.coerceIn(0f, GAME_HEIGHT)
+                deRezSystem.triggerExplosion(crashX, crashY, color)
+                animTick++
+            }
+        }
+    }
+
+    // Delay Game Over screen so players see the final crash animation
+    LaunchedEffect(mpState.winner, connectionLost) {
+        if (mpState.winner != null) {
+            showGameOverScreen = false
+            delay(700L)
+            showGameOverScreen = true
+        } else if (connectionLost) {
+            showGameOverScreen = true
+        } else {
+            showGameOverScreen = false
+        }
     }
 
     // Sync counter — send full state every N frames (host only)
@@ -593,8 +629,13 @@ fun MultiplayerGame(
             }
         }
 
-        connector.onGameOverReceived { _ ->
-            // Game over handled by state (mpState.winner)
+        connector.onGameOverReceived { winnerOrdinal ->
+            if (mpState.winner == null) {
+                val w = PlayerId.entries.getOrNull(winnerOrdinal)
+                if (w != null) {
+                    mpState = mpState.copy(winner = w)
+                }
+            }
         }
 
         connector.onRematchReceived { playerIndex ->
@@ -684,6 +725,10 @@ fun MultiplayerGame(
                     lastFrame = nanos
                     frameCount++
                     tickCounter++
+                    if (deRezSystem.hasActive()) {
+                        deRezSystem.update()
+                        animTick++
+                    }
                     if (isHost) {
                         // Steer AI bots before stepping physics
                         var stateWithAi = mpState
@@ -766,7 +811,7 @@ fun MultiplayerGame(
                         }
                         true
                     }
-                    Key.R -> if (mpState.winner != null) { doRematch(); true } else false
+                    Key.R -> if (showGameOverScreen && mpState.winner != null) { doRematch(); true } else false
                     Key.F3 -> {
                         showDebugOverlay = !showDebugOverlay
                         true
@@ -800,6 +845,9 @@ fun MultiplayerGame(
             contentAlignment = Alignment.Center
         ) {
             Canvas(modifier = Modifier.fillMaxSize()) {
+                // Observe animTick to drive continuous 60fps redraws during crash animation
+                val _anim = animTick
+
                 // Draw background for the entire screen (including letterbox areas)
                 drawRect(Color(0xFF020C02))
 
@@ -866,6 +914,9 @@ fun MultiplayerGame(
                         }
                     }
 
+                    // De-rez explosion particles & shockwaves for crashed players/bots
+                    deRezSystem.draw(this)
+
                     // Player labels HUD (top-left)
                     val pad = 40f
                     val topInset = 120f
@@ -891,8 +942,8 @@ fun MultiplayerGame(
                         currentY += measured.size.height + 10f
                     }
 
-                    // Game over or Connection Lost overlay
-                    if (mpState.winner != null || connectionLost) {
+                    // Game over or Connection Lost overlay (shown a few moments after the crash!)
+                    if (showGameOverScreen) {
                         drawRect(Color(0xCC000000), size = Size(GAME_WIDTH, GAME_HEIGHT))
 
                         val winnerPlayer = mpState.winner?.let { mpState.players.getOrNull(it.ordinal) }
@@ -1072,7 +1123,7 @@ fun MultiplayerGame(
         }
 
             // Rematch / back buttons overlay
-            if (mpState.winner != null || connectionLost) {
+            if (showGameOverScreen) {
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
@@ -1136,5 +1187,5 @@ fun MultiplayerGame(
 
 
     LaunchedEffect(Unit) { focusRequester.requestFocus() }
-    LaunchedEffect(mpState.winner) { focusRequester.requestFocus() }
+    LaunchedEffect(showGameOverScreen) { if (showGameOverScreen) focusRequester.requestFocus() }
 }

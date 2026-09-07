@@ -45,6 +45,7 @@ import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import org.jetbrains.compose.resources.Font
 import scrolltron.composeapp.generated.resources.Res
@@ -525,12 +526,24 @@ fun SingleplayerGame(onBack: () -> Unit = {}) {
     var showHint        by remember { mutableStateOf(true) }
     val deRezSystem   = remember { DeRezSystem() }
     var animTick      by remember { mutableStateOf(0L) }
+    var showEndScreen by remember { mutableStateOf(false) }
 
     val doRestart: () -> Unit = {
+        showEndScreen = false
         trailColor = nextTrailColor()
         gameState  = initialState(canvasWidth, canvasHeight)
         deRezSystem.clear()
         animTick++
+    }
+
+    LaunchedEffect(gameState.isDead) {
+        if (gameState.isDead) {
+            showEndScreen = false
+            delay(700L)
+            showEndScreen = true
+        } else {
+            showEndScreen = false
+        }
     }
 
     val focusRequester = remember { FocusRequester() }
@@ -716,8 +729,11 @@ fun SingleplayerGame(onBack: () -> Unit = {}) {
                 )
             }
 
-            // Death overlay
-            if (gameState.isDead) {
+            // De-rez explosion particles & shockwaves
+            deRezSystem.draw(this)
+
+            // Death overlay (shown a few moments later after the crash!)
+            if (showEndScreen) {
                 if (deathCount % 5 == 0) {
                     // 🎵 every 5th death: surprise!
                     drawRickRollOverlay(textMeasurer, deathCount, gameState.trail.size, highScore, gameFont, scaleFactor) { rickLyricRect = it }
@@ -727,15 +743,12 @@ fun SingleplayerGame(onBack: () -> Unit = {}) {
                 }
             }
 
-            // De-rez explosion particles & shockwaves (drawn after death overlay so sparks and shockwaves burst with full neon brilliance)
-            deRezSystem.draw(this)
-
             // Live score HUD (fixed width)
             drawScoreHud(textMeasurer, gameState.trail.size, highScore, trailColor, gameFont, scaleFactor)
         }
 
-        // Restart button — shown on both death screens, above the LaunchedEffect focus grab
-        if (gameState.isDead) {
+        // Restart button — shown once the end screen appears
+        if (showEndScreen) {
             Box(
                 modifier = Modifier
                     .fillMaxSize()
@@ -791,11 +804,11 @@ fun SingleplayerGame(onBack: () -> Unit = {}) {
     } // Closes inner scaled Box
     } // Closes BoxWithConstraints
 
-    // Grab keyboard focus initially and re-claim it whenever isDead changes.
+    // Grab keyboard focus initially and re-claim it whenever isDead / showEndScreen changes.
     // The restart button (.clickable) steals focus when it appears; this ensures
     // Escape and R always route back to the main Box.
     LaunchedEffect(Unit) { focusRequester.requestFocus() }
-    LaunchedEffect(gameState.isDead) { focusRequester.requestFocus() }
+    LaunchedEffect(showEndScreen) { if (showEndScreen) focusRequester.requestFocus() }
 }
 
 // ---------------------------------------------------------------------------
