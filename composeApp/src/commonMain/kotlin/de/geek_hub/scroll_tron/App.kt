@@ -378,15 +378,15 @@ private fun DrawScope.drawScoreHud(
     val boxX       = size.width - boxW - padH
     val boxY       = padV + topInset
 
-    // Floating cyber glass panel
+    // Floating transparent cyber glass panel (transparent so trail is clearly visible behind it)
     drawRoundRect(
-        color = CyberColors.PANEL_BG,
+        color = CyberColors.PANEL_BG.copy(alpha = 0.15f),
         topLeft = Offset(boxX, boxY),
         size = Size(boxW, boxH),
         cornerRadius = CornerRadius(8f / scaleFactor, 8f / scaleFactor),
     )
     drawRoundRect(
-        color = trailColor.copy(alpha = 0.45f),
+        color = trailColor.copy(alpha = 0.35f),
         topLeft = Offset(boxX, boxY),
         size = Size(boxW, boxH),
         cornerRadius = CornerRadius(8f / scaleFactor, 8f / scaleFactor),
@@ -394,7 +394,7 @@ private fun DrawScope.drawScoreHud(
     )
     // Left glowing accent bar
     drawRoundRect(
-        color = trailColor,
+        color = trailColor.copy(alpha = 0.5f),
         topLeft = Offset(boxX, boxY),
         size = Size(3.5f / scaleFactor, boxH),
         cornerRadius = CornerRadius(2f / scaleFactor, 2f / scaleFactor),
