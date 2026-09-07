@@ -629,6 +629,7 @@ fun MultiplayerGame(
     )
 
     LaunchedEffect(Unit) {
+        SoundManager.playStart()
         if (isHost) {
             val totalPlayers = minOf(4, maxOf(1, connector.connectedPlayers) + aiCount)
             resetRoundResources()
@@ -637,7 +638,6 @@ fun MultiplayerGame(
             connectionLost = false
             roundId++
             gameStarted = true
-            SoundManager.playStart()
         }
     }
 

@@ -120,7 +120,6 @@ fun MultiplayerLobby(
     LaunchedEffect(connState) {
         if (connState == LobbyConnectionState.Connected && lobbyMode == LobbyMode.Join) {
             isStartingGame = true
-            SoundManager.playStart()
             onGameReady(connector, false, 0)
         }
     }
@@ -400,7 +399,6 @@ fun MultiplayerLobby(
                                 if (totalPlayers >= 2) {
                                     LobbyButton("START GAME", NEON_LIME, gameFont) {
                                         isStartingGame = true
-                                        SoundManager.playStart()
                                         onGameReady(connector, true, aiCount)
                                     }
                                 } else {

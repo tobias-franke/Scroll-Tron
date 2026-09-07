@@ -53,6 +53,7 @@ import scrolltron.composeapp.generated.resources.orbitron_bold
 import scrolltron.composeapp.generated.resources.orbitron_regular
 import kotlin.math.abs
 import kotlin.math.cos
+import kotlin.math.roundToInt
 import kotlin.math.sin
 
 // ---------------------------------------------------------------------------
@@ -422,6 +423,110 @@ private fun DrawScope.drawScoreHud(
     val hiValX   = c2X + (colWidth - hiValM.size.width) / 2f
     drawText(hiLabelM, topLeft = Offset(hiLabelX, boxY + padV))
     drawText(hiValM,   topLeft = Offset(hiValX,   boxY + padV + hiLabelM.size.height + 2f))
+
+    return boxY + boxH
+}
+
+private fun DrawScope.drawDebugOverlay(
+    textMeasurer: androidx.compose.ui.text.TextMeasurer,
+    fps: Int,
+    tps: Int,
+    speed: Float,
+    angularVelocity: Float,
+    trailSize: Int,
+    gameFont: FontFamily,
+    scaleFactor: Float,
+    topY: Float,
+) {
+    val degPerSec = angularVelocity * (180f / kotlin.math.PI.toFloat()) * tps
+    val linearSpeedSec = (speed * tps).roundToInt()
+
+    val fpsColor = when {
+        fps >= 55 -> Color(0xFF39FF14)
+        fps >= 30 -> Color(0xFFFFCC00)
+        else -> Color(0xFFFF3333)
+    }
+    val tpsColor = when {
+        tps >= 55 -> Color(0xFF39FF14)
+        tps >= 30 -> Color(0xFFFFCC00)
+        else -> Color(0xFFFF3333)
+    }
+
+    val headerStyle = TextStyle(
+        fontSize = (13 / scaleFactor).sp,
+        fontWeight = FontWeight.Bold,
+        fontFamily = gameFont,
+        color = Color(0xFF00FFCC),
+    )
+    val labelStyle = TextStyle(
+        fontSize = (11 / scaleFactor).sp,
+        fontWeight = FontWeight.Normal,
+        fontFamily = FontFamily.Monospace,
+        color = Color(0xFF88AA99),
+    )
+
+    class StatEntry(val label: String, val value: String, val valueColor: Color)
+    val statList = listOf(
+        StatEntry("FPS", "$fps", fpsColor),
+        StatEntry("TPS", "$tps", tpsColor),
+        StatEntry("SPEED", "$linearSpeedSec px/s (3.0 px/t)", Color(0xFFE0FFEE)),
+        StatEntry("ANG VEL", "${format1Dec(angularVelocity)} rad/t (${format1Dec(degPerSec)}°/s)", Color(0xFFE0FFEE)),
+        StatEntry("TRAILS", "$trailSize segs", Color(0xFFE0FFEE)),
+    )
+
+    val headerMeasured = textMeasurer.measure("DEBUG STATS [F3]", headerStyle)
+    val measuredEntries = statList.map { entry ->
+        val labelM = textMeasurer.measure(entry.label.padEnd(9), labelStyle)
+        val valueM = textMeasurer.measure(entry.value, labelStyle.copy(color = entry.valueColor))
+        Triple(labelM, valueM, labelM.size.width + valueM.size.width)
+    }
+
+    val maxContentWidth = maxOf(
+        headerMeasured.size.width.toFloat(),
+        (measuredEntries.maxOfOrNull { it.third } ?: 0).toFloat(),
+    )
+    val boxPadding = 12f / scaleFactor
+    val padH = 14f / scaleFactor
+    val panelWidth = maxContentWidth + boxPadding * 2
+    val lineHeight = 18f / scaleFactor
+    val panelHeight = boxPadding * 2 + headerMeasured.size.height + (8f / scaleFactor) + (statList.size * lineHeight)
+    val panelX = size.width - panelWidth - padH
+    val panelY = topY
+
+    // Background panel
+    drawRoundRect(
+        color = Color(0xDD05100B),
+        topLeft = Offset(panelX, panelY),
+        size = Size(panelWidth, panelHeight),
+        cornerRadius = CornerRadius(8f / scaleFactor, 8f / scaleFactor),
+    )
+    drawRoundRect(
+        color = Color(0x6600FFCC),
+        topLeft = Offset(panelX, panelY),
+        size = Size(panelWidth, panelHeight),
+        cornerRadius = CornerRadius(8f / scaleFactor, 8f / scaleFactor),
+        style = Stroke(width = 1.2f / scaleFactor),
+    )
+
+    // Title
+    drawText(headerMeasured, topLeft = Offset(panelX + boxPadding, panelY + boxPadding))
+
+    // Divider line
+    val dividerY = panelY + boxPadding + headerMeasured.size.height + (4f / scaleFactor)
+    drawLine(
+        color = Color(0x4400FFCC),
+        start = Offset(panelX + boxPadding, dividerY),
+        end = Offset(panelX + panelWidth - boxPadding, dividerY),
+        strokeWidth = 1f / scaleFactor,
+    )
+
+    // Rows
+    var textY = dividerY + (6f / scaleFactor)
+    for ((labelM, valueM, _) in measuredEntries) {
+        drawText(labelM, topLeft = Offset(panelX + boxPadding, textY))
+        drawText(valueM, topLeft = Offset(panelX + boxPadding + labelM.size.width, textY))
+        textY += lineHeight
+    }
 }
 
 private fun DrawScope.drawDeadOverlay(
@@ -515,6 +620,10 @@ fun SingleplayerGame(onBack: () -> Unit = {}) {
     val deRezSystem   = remember { DeRezSystem() }
     var animTick      by remember { mutableStateOf(0L) }
     var showEndScreen by remember { mutableStateOf(false) }
+    var isNewBest     by remember { mutableStateOf(false) }
+    var fps           by remember { mutableStateOf(60) }
+    var tps           by remember { mutableStateOf(60) }
+    var showDebugOverlay by remember { mutableStateOf(false) }
 
     val doRestart: () -> Unit = {
         showEndScreen = false
@@ -534,8 +643,7 @@ fun SingleplayerGame(onBack: () -> Unit = {}) {
             showEndScreen = false
             delay(700L)
             showEndScreen = true
-            val score = gameState.trail.size
-            if (score > 0 && score >= highScore) {
+            if (isNewBest) {
                 SoundManager.playVictory()
             } else {
                 SoundManager.playGameOver()
@@ -564,12 +672,28 @@ fun SingleplayerGame(onBack: () -> Unit = {}) {
     // 60-FPS game loop
     LaunchedEffect(Unit) {
         var lastFrame = 0L
+        var frameCounter = 0
+        var tickCounter = 0
+        var lastStatNanos = 0L
         while (isActive) {
             withFrameNanos { nanos ->
+                frameCounter++
+                if (lastStatNanos == 0L) lastStatNanos = nanos
+                val statElapsed = nanos - lastStatNanos
+                if (statElapsed >= 500_000_000L) {
+                    val sec = statElapsed / 1_000_000_000.0
+                    fps = (frameCounter / sec).roundToInt()
+                    tps = (tickCounter / sec).roundToInt()
+                    frameCounter = 0
+                    tickCounter = 0
+                    lastStatNanos = nanos
+                }
+
                 if (lastFrame == 0L) { lastFrame = nanos; return@withFrameNanos }
                 val elapsed = (nanos - lastFrame) / 1_000_000L  // ms
                 if (elapsed >= 14L) {                             // ~60 fps
                     lastFrame = nanos
+                    tickCounter++
                     if (deRezSystem.hasActive()) {
                         deRezSystem.update()
                         animTick++
@@ -582,6 +706,7 @@ fun SingleplayerGame(onBack: () -> Unit = {}) {
                             SoundManager.playCrash()
                             deathCount++
                             val score = gameState.trail.size
+                            isNewBest = score > 0 && score > highScore && highScore > 0
                             if (score > highScore) highScore = score
                             val crashX = gameState.position.x.coerceIn(0f, canvasWidth)
                             val crashY = gameState.position.y.coerceIn(0f, canvasHeight)
@@ -611,6 +736,10 @@ fun SingleplayerGame(onBack: () -> Unit = {}) {
                         doRestart()
                         true
                     } else false
+                    Key.F3 -> {
+                        showDebugOverlay = !showDebugOverlay
+                        true
+                    }
                     else -> false
                 }
             }
@@ -634,6 +763,7 @@ fun SingleplayerGame(onBack: () -> Unit = {}) {
                     && rect != null && pos != null && rect.contains(pos)
             }
             .onPointerEvent(PointerEventType.Press) { event ->
+                focusRequester.requestFocus()
                 val pos = event.changes.firstOrNull()?.position ?: return@onPointerEvent
                 val rect = rickLyricRect
                 if (gameState.isDead && deathCount % 5 == 0 && rect != null && rect.contains(pos)) {

@@ -25,30 +25,41 @@ function(soundId) {
         }
         var t = ctx.currentTime;
 
-        if (soundId === 0) { // STEER: Lightcycle Grid Plasma Skid / Laser Whip
-            var dur = 0.04;
-            var osc = ctx.createOscillator();
+        if (soundId === 0) { // STEER: Punchy low-mid Lightcycle Thruster Impulse
+            var dur = 0.045;
+            var punchOsc = ctx.createOscillator();
+            var punchGain = ctx.createGain();
+            punchOsc.type = 'sine';
+            punchOsc.frequency.setValueAtTime(140, t);
+            punchOsc.frequency.exponentialRampToValueAtTime(50, t + dur);
+            punchGain.gain.setValueAtTime(0.35, t);
+            punchGain.gain.exponentialRampToValueAtTime(0.001, t + dur);
+            punchOsc.connect(punchGain);
+            punchGain.connect(ctx.destination);
+            punchOsc.start(t);
+            punchOsc.stop(t + dur);
+
+            var bufSize = Math.floor(ctx.sampleRate * dur);
+            var noiseBuf = ctx.createBuffer(1, bufSize, ctx.sampleRate);
+            var out = noiseBuf.getChannelData(0);
+            for (var i = 0; i < bufSize; i++) {
+                out[i] = Math.random() * 2 - 1;
+            }
+            var noise = ctx.createBufferSource();
+            noise.buffer = noiseBuf;
             var filter = ctx.createBiquadFilter();
-            var gain = ctx.createGain();
-
-            osc.type = 'sawtooth';
-            osc.frequency.setValueAtTime(550, t);
-            osc.frequency.exponentialRampToValueAtTime(200, t + dur);
-
-            filter.type = 'bandpass';
-            filter.frequency.setValueAtTime(2400, t);
-            filter.frequency.exponentialRampToValueAtTime(450, t + dur);
-            filter.Q.setValueAtTime(3.0, t);
-
-            gain.gain.setValueAtTime(0.18, t);
-            gain.gain.exponentialRampToValueAtTime(0.001, t + dur);
-
-            osc.connect(filter);
-            filter.connect(gain);
-            gain.connect(ctx.destination);
-
-            osc.start(t);
-            osc.stop(t + dur);
+            filter.type = 'lowpass';
+            filter.frequency.setValueAtTime(550, t);
+            filter.frequency.exponentialRampToValueAtTime(80, t + dur);
+            filter.Q.setValueAtTime(2.0, t);
+            var jetGain = ctx.createGain();
+            jetGain.gain.setValueAtTime(0.2, t);
+            jetGain.gain.exponentialRampToValueAtTime(0.001, t + dur);
+            noise.connect(filter);
+            filter.connect(jetGain);
+            jetGain.connect(ctx.destination);
+            noise.start(t);
+            noise.stop(t + dur);
         } else if (soundId === 1) { // CRASH: Tron De-Rez Disintegration (Sub Boom + Glassy Shatter + Laser Zap)
             var dur = 0.45;
 
@@ -203,14 +214,14 @@ function(soundId) {
                 osc.start(t);
                 osc.stop(t + dur);
             }
-        } else if (soundId === 5) { // UI_CLICK: Holographic Touchscreen Tap (Clean High-Tech Micro-Transient)
-            var dur = 0.02;
+        } else if (soundId === 5) { // UI_CLICK: Crisp Holographic Touchscreen Tap (Clearly Audible Micro-Transient Pop)
+            var dur = 0.05;
             var osc = ctx.createOscillator();
             var gain = ctx.createGain();
             osc.type = 'sine';
-            osc.frequency.setValueAtTime(1800, t);
-            osc.frequency.exponentialRampToValueAtTime(900, t + dur);
-            gain.gain.setValueAtTime(0.12, t);
+            osc.frequency.setValueAtTime(750, t);
+            osc.frequency.exponentialRampToValueAtTime(350, t + dur);
+            gain.gain.setValueAtTime(0.3, t);
             gain.gain.exponentialRampToValueAtTime(0.001, t + dur);
             osc.connect(gain);
             gain.connect(ctx.destination);
