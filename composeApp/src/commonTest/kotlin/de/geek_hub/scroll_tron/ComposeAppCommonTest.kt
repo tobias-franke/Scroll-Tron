@@ -185,4 +185,84 @@ class ComposeAppCommonTest {
             "Final trail segment must NOT overshoot GAME_WIDTH ($GAME_WIDTH), but was ${result.trail.last().end.x}"
         )
     }
+
+    @Test
+    fun testComputeScoreHudLayout_noClippingOrOverlapOnRetinaDisplay() {
+        // At 2x density (Retina), 16.sp Orbitron 5-digit text is ~134px wide, 10.sp RECORD is ~98px wide
+        val layout = computeScoreHudLayout(
+            canvasWidth = 1600f,
+            scoreLabelW = 82,
+            scoreLabelH = 26,
+            scoreValW = 133,   // e.g. "00323"
+            scoreValH = 40,
+            hiLabelW = 98,
+            hiLabelH = 26,
+            hiValW = 134,      // e.g. "00000"
+            hiValH = 40,
+            maxScoreValW = 134,
+            scaleFactor = 1.0f,
+        )
+
+        // Score value must stay inside the box and to the left of the divider
+        kotlin.test.assertTrue(
+            layout.scoreValX > layout.boxX,
+            "Score value left edge (${layout.scoreValX}) must be inside box left edge (${layout.boxX})"
+        )
+        kotlin.test.assertTrue(
+            layout.scoreValX + 133f < layout.divX,
+            "Score value right edge (${layout.scoreValX + 133f}) must be left of divider (${layout.divX})"
+        )
+
+        // Record value must stay to the right of the divider and inside the box right edge
+        kotlin.test.assertTrue(
+            layout.hiValX > layout.divX,
+            "Record value left edge (${layout.hiValX}) must be right of divider (${layout.divX})"
+        )
+        kotlin.test.assertTrue(
+            layout.hiValX + 134f < layout.boxX + layout.boxW,
+            "Record value right edge (${layout.hiValX + 134f}) must be inside box right edge (${layout.boxX + layout.boxW})"
+        )
+
+        // Labels must also not cross the divider or box bounds
+        kotlin.test.assertTrue(layout.scoreLabelX > layout.boxX)
+        kotlin.test.assertTrue(layout.scoreLabelX + 82f < layout.divX)
+        kotlin.test.assertTrue(layout.hiLabelX > layout.divX)
+        kotlin.test.assertTrue(layout.hiLabelX + 98f < layout.boxX + layout.boxW)
+    }
+
+    @Test
+    fun testComputeScoreHudLayout_constantWidthAcrossDigitChanges() {
+        // Narrow digits ("00111" -> 90px) vs wide digits ("00000" -> 134px) must produce identical box dimensions
+        val narrowLayout = computeScoreHudLayout(
+            canvasWidth = 1600f,
+            scoreLabelW = 82,
+            scoreLabelH = 26,
+            scoreValW = 90,
+            scoreValH = 40,
+            hiLabelW = 98,
+            hiLabelH = 26,
+            hiValW = 134,
+            hiValH = 40,
+            maxScoreValW = 134,
+            scaleFactor = 1.0f,
+        )
+        val wideLayout = computeScoreHudLayout(
+            canvasWidth = 1600f,
+            scoreLabelW = 82,
+            scoreLabelH = 26,
+            scoreValW = 134,
+            scoreValH = 40,
+            hiLabelW = 98,
+            hiLabelH = 26,
+            hiValW = 134,
+            hiValH = 40,
+            maxScoreValW = 134,
+            scaleFactor = 1.0f,
+        )
+
+        assertEquals(wideLayout.colWidth, narrowLayout.colWidth)
+        assertEquals(wideLayout.boxW, narrowLayout.boxW)
+        assertEquals(wideLayout.boxX, narrowLayout.boxX)
+        assertEquals(wideLayout.divX, narrowLayout.divX)
+    }
 }
