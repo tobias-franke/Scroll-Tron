@@ -331,6 +331,75 @@ private fun DrawScope.drawBorder(trailColor: Color) {
     )
 }
 
+internal data class ScoreHudLayout(
+    val boxX: Float,
+    val boxY: Float,
+    val boxW: Float,
+    val boxH: Float,
+    val colWidth: Float,
+    val c1X: Float,
+    val scoreLabelX: Float,
+    val scoreValX: Float,
+    val divX: Float,
+    val c2X: Float,
+    val hiLabelX: Float,
+    val hiValX: Float,
+)
+
+internal fun computeScoreHudLayout(
+    canvasWidth: Float,
+    scoreLabelW: Int,
+    scoreLabelH: Int,
+    scoreValW: Int,
+    scoreValH: Int,
+    hiLabelW: Int,
+    hiLabelH: Int,
+    hiValW: Int,
+    hiValH: Int,
+    maxScoreValW: Int,
+    scaleFactor: Float,
+): ScoreHudLayout {
+    // Fixed column width derived from widest digit template so boxes never clip, resize, or jitter
+    val colPadding = 12f / scaleFactor
+    val colWidth = maxOf(
+        80f / scaleFactor,
+        maxOf(maxScoreValW, scoreValW, hiValW, scoreLabelW, hiLabelW).toFloat() + colPadding,
+    )
+    val padH     = 14f / scaleFactor
+    val padV     = 10f / scaleFactor
+    val topInset = 48f / scaleFactor
+    val colGap   = 16f / scaleFactor
+    val accentW  = 4f / scaleFactor
+
+    val boxW = padH * 2 + colWidth * 2 + colGap + accentW
+    val boxH = padV * 2 + maxOf(scoreLabelH + scoreValH, hiLabelH + hiValH) + 4f
+    val boxX = canvasWidth - boxW - padH
+    val boxY = padV + topInset
+
+    val c1X         = boxX + padH + accentW
+    val scoreLabelX = c1X + (colWidth - scoreLabelW) / 2f
+    val scoreValX   = c1X + (colWidth - scoreValW) / 2f
+    val divX        = c1X + colWidth + (colGap / 2f)
+    val c2X         = divX + (colGap / 2f)
+    val hiLabelX    = c2X + (colWidth - hiLabelW) / 2f
+    val hiValX      = c2X + (colWidth - hiValW) / 2f
+
+    return ScoreHudLayout(
+        boxX = boxX,
+        boxY = boxY,
+        boxW = boxW,
+        boxH = boxH,
+        colWidth = colWidth,
+        c1X = c1X,
+        scoreLabelX = scoreLabelX,
+        scoreValX = scoreValX,
+        divX = divX,
+        c2X = c2X,
+        hiLabelX = hiLabelX,
+        hiValX = hiValX,
+    )
+}
+
 private fun DrawScope.drawScoreHud(
     textMeasurer: androidx.compose.ui.text.TextMeasurer,
     score: Int,
@@ -341,6 +410,8 @@ private fun DrawScope.drawScoreHud(
 ) {
     val scoreValText = score.toString().padStart(5, '0')
     val hiValText    = highScore.toString().padStart(5, '0')
+    val maxDigits    = maxOf(5, scoreValText.length, hiValText.length)
+    val maxValText   = "0".repeat(maxDigits)
 
     val labelStyle = TextStyle(
         fontSize   = (10 / scaleFactor).sp,
@@ -361,67 +432,64 @@ private fun DrawScope.drawScoreHud(
         color      = if (score > 0 && score >= highScore) CyberColors.NEON_LIME else Color(0xFFAAAAAA),
     )
 
-    val scoreLabelM = textMeasurer.measure("SCORE", labelStyle)
-    val scoreValM   = textMeasurer.measure(scoreValText, scoreValStyle)
-    val hiLabelM    = textMeasurer.measure("RECORD", labelStyle)
-    val hiValM      = textMeasurer.measure(hiValText, hiValStyle)
+    val scoreLabelM  = textMeasurer.measure("SCORE", labelStyle)
+    val scoreValM    = textMeasurer.measure(scoreValText, scoreValStyle)
+    val hiLabelM     = textMeasurer.measure("RECORD", labelStyle)
+    val hiValM       = textMeasurer.measure(hiValText, hiValStyle)
+    val maxScoreValM = textMeasurer.measure(maxValText, scoreValStyle)
 
-    // Fixed column width for both score boxes so they never resize or jitter
-    val colWidth   = 80f / scaleFactor
-    val padH       = 14f / scaleFactor
-    val padV       = 10f / scaleFactor
-    val topInset   = 48f / scaleFactor
-    val colGap     = 16f / scaleFactor
-
-    val boxW       = padH * 2 + colWidth * 2 + colGap + 4f / scaleFactor
-    val boxH       = padV * 2 + maxOf(scoreLabelM.size.height + scoreValM.size.height, hiLabelM.size.height + hiValM.size.height) + 4f
-    val boxX       = size.width - boxW - padH
-    val boxY       = padV + topInset
+    val padV   = 10f / scaleFactor
+    val layout = computeScoreHudLayout(
+        canvasWidth  = size.width,
+        scoreLabelW  = scoreLabelM.size.width,
+        scoreLabelH  = scoreLabelM.size.height,
+        scoreValW    = scoreValM.size.width,
+        scoreValH    = scoreValM.size.height,
+        hiLabelW     = hiLabelM.size.width,
+        hiLabelH     = hiLabelM.size.height,
+        hiValW       = hiValM.size.width,
+        hiValH       = hiValM.size.height,
+        maxScoreValW = maxScoreValM.size.width,
+        scaleFactor  = scaleFactor,
+    )
 
     // Floating transparent cyber glass panel (transparent so trail is clearly visible behind it)
     drawRoundRect(
         color = CyberColors.PANEL_BG.copy(alpha = 0.15f),
-        topLeft = Offset(boxX, boxY),
-        size = Size(boxW, boxH),
+        topLeft = Offset(layout.boxX, layout.boxY),
+        size = Size(layout.boxW, layout.boxH),
         cornerRadius = CornerRadius(8f / scaleFactor, 8f / scaleFactor),
     )
     drawRoundRect(
         color = trailColor.copy(alpha = 0.35f),
-        topLeft = Offset(boxX, boxY),
-        size = Size(boxW, boxH),
+        topLeft = Offset(layout.boxX, layout.boxY),
+        size = Size(layout.boxW, layout.boxH),
         cornerRadius = CornerRadius(8f / scaleFactor, 8f / scaleFactor),
         style = Stroke(width = 1.2f / scaleFactor),
     )
     // Left glowing accent bar
     drawRoundRect(
         color = trailColor.copy(alpha = 0.5f),
-        topLeft = Offset(boxX, boxY),
-        size = Size(3.5f / scaleFactor, boxH),
+        topLeft = Offset(layout.boxX, layout.boxY),
+        size = Size(3.5f / scaleFactor, layout.boxH),
         cornerRadius = CornerRadius(2f / scaleFactor, 2f / scaleFactor),
     )
 
     // Score column (fixed width, centered)
-    val c1X = boxX + padH + 4f / scaleFactor
-    val scoreLabelX = c1X + (colWidth - scoreLabelM.size.width) / 2f
-    val scoreValX   = c1X + (colWidth - scoreValM.size.width) / 2f
-    drawText(scoreLabelM, topLeft = Offset(scoreLabelX, boxY + padV))
-    drawText(scoreValM,   topLeft = Offset(scoreValX,   boxY + padV + scoreLabelM.size.height + 2f))
+    drawText(scoreLabelM, topLeft = Offset(layout.scoreLabelX, layout.boxY + padV))
+    drawText(scoreValM,   topLeft = Offset(layout.scoreValX,   layout.boxY + padV + scoreLabelM.size.height + 2f))
 
     // Divider
-    val divX = c1X + colWidth + (colGap / 2f)
     drawLine(
         color = Color(0x33FFFFFF),
-        start = Offset(divX, boxY + padV + 2f),
-        end = Offset(divX, boxY + boxH - padV - 2f),
+        start = Offset(layout.divX, layout.boxY + padV + 2f),
+        end = Offset(layout.divX, layout.boxY + layout.boxH - padV - 2f),
         strokeWidth = 1f,
     )
 
     // Record column (fixed width, centered)
-    val c2X = divX + (colGap / 2f)
-    val hiLabelX = c2X + (colWidth - hiLabelM.size.width) / 2f
-    val hiValX   = c2X + (colWidth - hiValM.size.width) / 2f
-    drawText(hiLabelM, topLeft = Offset(hiLabelX, boxY + padV))
-    drawText(hiValM,   topLeft = Offset(hiValX,   boxY + padV + hiLabelM.size.height + 2f))
+    drawText(hiLabelM, topLeft = Offset(layout.hiLabelX, layout.boxY + padV))
+    drawText(hiValM,   topLeft = Offset(layout.hiValX,   layout.boxY + padV + hiLabelM.size.height + 2f))
 }
 
 private fun DrawScope.drawDeadOverlay(
